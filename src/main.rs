@@ -45,7 +45,7 @@ impl<RHS> Add<RHS> for Zero where RHS: Number {
     type Out = RHS;
 }
 
-// f(x, y + 1) -> f(x, y) + x
+// f(x, n + 1) -> f(x, n) + 1
 impl<LHS, RHS> Add<RHS> for Succ<LHS> where RHS: Add<LHS> {
     type Out = Succ<<RHS as Add<LHS>>::Out>;
 }
@@ -73,7 +73,7 @@ impl<A> Pow<A> for Zero {
     type Out =  Succ<Zero>;
 }
 
-// f(x, y + 1) = xf(x, y)
+// f(x, y + 1) = x*f(x, y)
 impl<A, E> Pow<A> for Succ<E> where E: Pow<A>, E::Out: Mul<A> {
     type Out = <<E as Pow<A>>::Out as Mul<A>>::Out;
 }
