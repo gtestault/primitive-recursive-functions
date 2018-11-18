@@ -1,0 +1,6 @@
+[package]
+name = "primitive-recursive-functions"
+version = "0.1.0"
+authors = ["gabriel <gabriel.testault@gmail.com>"]
+
+[dependencies]
