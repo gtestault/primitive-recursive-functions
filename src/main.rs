@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![recursion_limit="500"]
 use std::marker::PhantomData;
 
 struct Zero{}
@@ -78,6 +79,18 @@ impl<A, E> Pow<A> for Succ<E> where E: Pow<A>, E::Out: Mul<A> {
     type Out = <<E as Pow<A>>::Out as Mul<A>>::Out;
 }
 
+trait If<A, B> {
+    type Out;
+}
+
+impl<A, B> If<A, B> for Zero {
+    type Out = B;
+}
+
+impl<A, B> If<A, B> for Succ<Zero> {
+    type Out = A;
+}
+
 fn incr<A, B>() where A: Incr<Out=B>, B: Number {
     println!("{}", B::repr());
 }
@@ -94,6 +107,17 @@ fn pow<A, E, B>() where E: Pow<A, Out=B>, B: Number {
     println!("{}", B::repr());
 }
 
+fn conditional_mul<A, B, C, D>() where A: If<<B as Mul<C>>::Out, Zero, Out=D>, B: Mul<C>, D: Number {
+    println!("{}", D::repr());
+}
+
+fn conditional_generic<A, B, C, D>() where A: If<B, C, Out=D>, D: Number {
+    println!("{}", D::repr());
+}
+
+type False = Zero;
+type True = Succ<Zero>;
+
 type I1 = Succ<Zero>;
 type I2 = Succ<Succ<Zero>>;
 type I3 = Succ<Succ<Succ<Zero>>>;
@@ -106,5 +130,7 @@ type P50<N> = P10<P10<P10<P10<P10<N>>>>>;
 fn main() {
     //add::<P10<Zero>, P5<Zero>, _ >();
     //mul::<I4, P10<Zero>, _>();
-    pow::<I2, I5, _>();
+    //pow::<I2, I5, _>();
+    //conditional_mul::<False, I2, P50<I5>, _ >()
+    conditional_generic::<False, <I5 as Add<I2>>::Out, <I3 as Add<P50<I2>>>::Out, _>()
 }
