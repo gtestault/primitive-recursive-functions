@@ -91,6 +91,45 @@ impl<A, B> If<A, B> for Succ<Zero> {
     type Out = A;
 }
 
+
+//Check if type Self and A are equal: if they are return Succ<Zero>, if not unification fails -> compiler error
+trait Equal<A> {
+    type Out;
+}
+
+impl Equal<Zero> for Zero {
+    type Out = Succ<Zero>;
+}
+
+impl<A, B> Equal<Succ<B>> for Succ<A> where B: Equal<A> {
+    type Out = <B as Equal<A>>::Out;
+}
+
+trait Max<B> {
+    type Out;
+}
+
+//Recursion start
+impl<A, B> Max<Succ<B>> for Succ<A> where A: Max<B> {
+    type Out = Succ<<A as Max<B>>::Out>;
+}
+
+//Recursion end: Type Self < B (trait parameter) are Equal
+impl<A> Max<Succ<A>> for Zero {
+    type Out = Succ<A>;
+}
+//Recursion end: Type Self > B (trait parameter) are Equal
+impl<A> Max<Zero> for Succ<A> {
+    type Out = Succ<A>;
+}
+
+//Recursion end: Type Self and B are Equal
+impl Max<Zero> for Zero {
+    type Out = Zero;
+}
+
+// When calling the function the last generic Type (B) must be set to '_' in order for the compiler to infer the result type of the operation.
+// If we set the B generic type and it is not the result type of the operation, the rust unification process will fail and the type checker will error out.
 fn incr<A, B>() where A: Incr<Out=B>, B: Number {
     println!("{}", B::repr());
 }
@@ -115,6 +154,14 @@ fn conditional_generic<A, B, C, D>() where A: If<B, C, Out=D>, D: Number {
     println!("{}", D::repr());
 }
 
+fn equal<A, B, C>() where A: Equal<B, Out=C>, C: Number {
+    println!("{}", C::repr());
+}
+
+fn max<A, B, C>() where A: Max<B, Out=C>, C: Number {
+    println!("{}", C::repr());
+}
+
 type False = Zero;
 type True = Succ<Zero>;
 
@@ -127,10 +174,52 @@ type P5<N> = Succ<Succ<Succ<Succ<Succ<N>>>>>;
 type P10<N> = P5<P5<N>>;
 type P50<N> = P10<P10<P10<P10<P10<N>>>>>;
 
+
+struct BNode<L, R> where L: Height, L::Out: Eq<<R as Height>::Out>, R: Height, {
+
+}
+struct RNode<L, R> where L: Height, L::Out: Eq<<R as Height>::Out>, R: Height, {
+
+}
+struct Leaf {
+
+}
+
+trait Node where {}
+impl<L, R> Node for BNode<L, R> {}
+impl<L, R> Node for RNode<L, R>  where L: Black, R: Black {}
+
+struct Black{}
+struct Red{}
+
+trait Color{}
+impl Color for Black{}
+impl Color for Red{}
+
+trait Height { type Out: Number; }
+
+impl Height for Leaf {
+    type Out = Zero;
+}
+
+impl<L, R> Height for BNode<L, R> {
+    type Out = Succ<<<L as Height>::Out as Max<<R as Height>::Out>>::Out>;
+}
+
+impl<L, R> Height for RNode<L, R>  {
+    type Out = <<L as Height>::Out as Max<<R as Height>::Out>>::Out;
+}
+
+
+
+
+
 fn main() {
-    //add::<P10<Zero>, P5<Zero>, _ >();
+    //add::<P10<Zero>, P5<Zero>>();
     //mul::<I4, P10<Zero>, _>();
     //pow::<I2, I5, _>();
     //conditional_mul::<False, I2, P50<I5>, _ >()
-    conditional_generic::<False, <I5 as Add<I2>>::Out, <I3 as Add<P50<I2>>>::Out, _>()
+    //conditional_generic::<False, <I5 as Add<I2>>::Out, <I3 as Add<P50<I2>>>::Out, _>()
+    //equal::<P10<Zero>, P10<Zero>, _>()
+    //max::<P10<Zero>, P50<Succ<Zero>>, _>();
 }
