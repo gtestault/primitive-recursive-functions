@@ -106,7 +106,7 @@ impl<A, B> Equal<Succ<B>> for Succ<A> where B: Equal<A> {
 }
 
 trait Max<B> {
-    type Out;
+    type Out: Number;
 }
 
 //Recursion start
@@ -115,11 +115,11 @@ impl<A, B> Max<Succ<B>> for Succ<A> where A: Max<B> {
 }
 
 //Recursion end: Type Self < B (trait parameter) are Equal
-impl<A> Max<Succ<A>> for Zero {
+impl<A> Max<Succ<A>> for Zero where A: Number {
     type Out = Succ<A>;
 }
 //Recursion end: Type Self > B (trait parameter) are Equal
-impl<A> Max<Zero> for Succ<A> {
+impl<A> Max<Zero> for Succ<A> where A: Number {
     type Out = Succ<A>;
 }
 
@@ -175,26 +175,28 @@ type P10<N> = P5<P5<N>>;
 type P50<N> = P10<P10<P10<P10<P10<N>>>>>;
 
 
-struct BNode<L, R> where L: Height, L::Out: Eq<<R as Height>::Out>, R: Height, {
-
+struct BNode<L, R> {
+    left: PhantomData<L>,
+    right: PhantomData<R>,
 }
-struct RNode<L, R> where L: Height, L::Out: Eq<<R as Height>::Out>, R: Height, {
-
+struct RNode<L, R> {
+    left: PhantomData<L>,
+    right: PhantomData<R>,
 }
 struct Leaf {
 
 }
 
 trait Node where {}
-impl<L, R> Node for BNode<L, R> {}
-impl<L, R> Node for RNode<L, R>  where L: Black, R: Black {}
+impl<L, R> Node for BNode<L, R>  where L: Height, L::Out: Equal<<R as Height>::Out>, R: Height {}
+impl<L, R> Node for RNode<L, R>  where L: Black + Height, L::Out: Equal<<R as Height>::Out>,  R: Black + Height {}
 
-struct Black{}
-struct Red{}
+trait Black{}
+trait Red{}
 
-trait Color{}
-impl Color for Black{}
-impl Color for Red{}
+impl<L, R> Black for BNode<L, R>{}
+impl Black for Leaf{}
+impl<L, R> Red for RNode<L, R>{}
 
 trait Height { type Out: Number; }
 
@@ -202,19 +204,21 @@ impl Height for Leaf {
     type Out = Zero;
 }
 
-impl<L, R> Height for BNode<L, R> {
+impl<L, R> Height for BNode<L, R> where L: Height, R: Height, <L as Height>::Out: Max<<R as Height>::Out> {
     type Out = Succ<<<L as Height>::Out as Max<<R as Height>::Out>>::Out>;
 }
 
-impl<L, R> Height for RNode<L, R>  {
+impl<L, R> Height for RNode<L, R>  where L: Height, R: Height, <L as Height>::Out: Max<<R as Height>::Out> {
     type Out = <<L as Height>::Out as Max<<R as Height>::Out>>::Out;
 }
 
+fn check_tree<A>() where A: Node {
 
-
+}
 
 
 fn main() {
+    check_tree::<BNode<BNode<Leaf, Leaf>, BNode<RNode<Leaf, Leaf>, Leaf>>>();
     //add::<P10<Zero>, P5<Zero>>();
     //mul::<I4, P10<Zero>, _>();
     //pow::<I2, I5, _>();
