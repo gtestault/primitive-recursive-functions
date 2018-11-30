@@ -37,6 +37,18 @@ impl<A> Incr for Succ<A> where A: Number {
     type Out = Succ<Succ<A>>;
 }
 
+trait Decr {
+    type Out: Number;
+}
+
+impl Decr for Zero {
+    type Out = Zero;
+}
+
+impl<A> Decr for Succ<A> where A: Number {
+    type Out = A;
+}
+
 trait Add<RHS> {
     type Out: Number;
 }
@@ -51,6 +63,19 @@ impl<LHS, RHS> Add<RHS> for Succ<LHS> where RHS: Add<LHS> {
     type Out = Succ<<RHS as Add<LHS>>::Out>;
 }
 
+// Subtraction only on natural numbers. Negative numbers are mapped to Zero.
+trait Sub<RHS> {
+    type Out: Number;
+}
+
+impl<LHS> Sub<LHS> for Zero where LHS: Number {
+    type Out = LHS;
+}
+
+impl<A, LHS> Sub<LHS> for Succ<A> where A: Sub<<LHS as Decr>::Out>, LHS: Decr {
+    type Out =  <A as Sub<<LHS as Decr>::Out>>::Out;
+}
+
 trait Mul<RHS> {
     type Out: Number;
 }
@@ -63,6 +88,18 @@ impl<RHS> Mul<RHS> for Zero {
 // f(x, y + 1) = f(x, y) + x
 impl <A, RHS> Mul<RHS> for Succ<A> where A: Mul<RHS>, A::Out: Add<RHS> {
     type Out = <<A as Mul<RHS>>::Out as Add<RHS>>::Out;
+}
+
+trait Div<RHS> {
+    type Out: Number;
+}
+
+impl<RHS> Div<RHS> for Zero {
+    type Out = Zero;
+}
+
+impl<A, RHS> Div<RHS> for Succ<A> where RHS: Sub<Succ<A>>,  <RHS as Sub<Succ<A>>>::Out: Div<RHS> {
+    type Out = Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>;
 }
 
 trait Pow<A> {
@@ -130,36 +167,48 @@ impl Max<Zero> for Zero {
 
 // When calling the function the last generic Type (B) must be set to '_' in order for the compiler to infer the result type of the operation.
 // If we set the B generic type and it is not the result type of the operation, the rust unification process will fail and the type checker will error out.
-fn incr<A, B>() where A: Incr<Out=B>, B: Number {
-    println!("{}", B::repr());
+fn incr<A, B>() -> i32 where A: Incr<Out=B>, B: Number {
+    B::repr()
 }
 
-fn add<LHS, RHS, B>() where LHS: Add<RHS, Out=B>, B: Number {
-    println!("{}", B::repr());
+fn decr<A, B>() -> i32 where A: Decr<Out=B>, B: Number {
+    B::repr()
 }
 
-fn mul<LHS, RHS, B>() where LHS: Mul<RHS, Out=B>, B: Number {
-    println!("{}", B::repr());
+fn add<LHS, RHS, B>() -> i32 where LHS: Add<RHS, Out=B>, B: Number {
+    B::repr()
 }
 
-fn pow<A, E, B>() where E: Pow<A, Out=B>, B: Number {
-    println!("{}", B::repr());
+fn sub<LHS, RHS, Result>() -> i32 where RHS: Sub<LHS, Out=Result>, Result: Number {
+    Result::repr()
 }
 
-fn conditional_mul<A, B, C, D>() where A: If<<B as Mul<C>>::Out, Zero, Out=D>, B: Mul<C>, D: Number {
-    println!("{}", D::repr());
+fn mul<LHS, RHS, Result>() -> i32 where LHS: Mul<RHS, Out=Result>, Result: Number {
+    Result::repr()
 }
 
-fn conditional_generic<A, B, C, D>() where A: If<B, C, Out=D>, D: Number {
-    println!("{}", D::repr());
+fn div<LHS, RHS, Result>() -> i32 where LHS: Div<RHS, Out=Result>, Result: Number {
+    Result::repr()
+}
+
+fn pow<A, E, Result>() -> i32 where E: Pow<A, Out=Result>, Result: Number {
+    Result::repr()
+}
+
+fn conditional_mul<A, B, C, Result>() where A: If<<B as Mul<C>>::Out, Zero, Out=Result>, B: Mul<C>, Result: Number {
+    println!("{}", Result::repr());
+}
+
+fn conditional_generic<A, B, C, Result>() -> i32 where A: If<B, C, Out=Result>, Result: Number {
+    Result::repr()
 }
 
 fn equal<A, B, C>() where A: Equal<B, Out=C>, C: Number {
     println!("{}", C::repr());
 }
 
-fn max<A, B, C>() where A: Max<B, Out=C>, C: Number {
-    println!("{}", C::repr());
+fn max<A, B, C>() -> i32 where A: Max<B, Out=C>, C: Number {
+    C::repr()
 }
 
 type False = Zero;
@@ -174,12 +223,14 @@ type P5<N> = Succ<Succ<Succ<Succ<Succ<N>>>>>;
 type P10<N> = P5<P5<N>>;
 type P50<N> = P10<P10<P10<P10<P10<N>>>>>;
 
-
-struct BNode<L, R> {
+// Red Black Tree Type Checking START -------------------------------------------
+struct BNode<V, L, R> {
+    value: V,
     left: PhantomData<L>,
     right: PhantomData<R>,
 }
-struct RNode<L, R> {
+struct RNode<V, L, R> {
+    value: V,
     left: PhantomData<L>,
     right: PhantomData<R>,
 }
@@ -188,15 +239,15 @@ struct Leaf {
 }
 
 trait Node where {}
-impl<L, R> Node for BNode<L, R>  where L: Height, L::Out: Equal<<R as Height>::Out>, R: Height {}
-impl<L, R> Node for RNode<L, R>  where L: Black + Height, L::Out: Equal<<R as Height>::Out>,  R: Black + Height {}
+impl<V, L, R> Node for BNode<V, L, R>  where L: Height, L::Out: Equal<<R as Height>::Out>, R: Height {}
+impl<V, L, R> Node for RNode<V, L, R>  where L: Black + Height, L::Out: Equal<<R as Height>::Out>,  R: Black + Height {}
 
 trait Black{}
 trait Red{}
 
-impl<L, R> Black for BNode<L, R>{}
+impl<V, L, R> Black for BNode<V, L, R>{}
 impl Black for Leaf{}
-impl<L, R> Red for RNode<L, R>{}
+impl<V, L, R> Red for RNode<V, L, R>{}
 
 trait Height { type Out: Number; }
 
@@ -204,11 +255,11 @@ impl Height for Leaf {
     type Out = Zero;
 }
 
-impl<L, R> Height for BNode<L, R> where L: Height, R: Height, <L as Height>::Out: Max<<R as Height>::Out> {
+impl<V, L, R> Height for BNode<V, L, R> where L: Height, R: Height, <L as Height>::Out: Max<<R as Height>::Out> {
     type Out = Succ<<<L as Height>::Out as Max<<R as Height>::Out>>::Out>;
 }
 
-impl<L, R> Height for RNode<L, R>  where L: Height, R: Height, <L as Height>::Out: Max<<R as Height>::Out> {
+impl<V, L, R> Height for RNode<V, L, R>  where L: Height, R: Height, <L as Height>::Out: Max<<R as Height>::Out> {
     type Out = <<L as Height>::Out as Max<<R as Height>::Out>>::Out;
 }
 
@@ -216,14 +267,76 @@ fn check_tree<A>() where A: Node {
 
 }
 
+// Red Black Tree Type Checking END -------------------------------------------
+
+struct HCons<Head, Tail> {
+    h: PhantomData<Head>,
+    t: PhantomData<Tail>
+}
+
+struct HNil{}
+
+struct Alive{}
+struct Dead{}
+
+type EMPTY5<A> = HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, A>>>>>;
+type EMPTY10<A> = EMPTY5<EMPTY5<A>>;
+type ARRAY = HCons<Alive, HNil>;
+type I11 = P10<P10<Succ<Zero>>>;
+
+
+trait Pretty<Index> where Index: Number {
+    fn repr() -> String;
+}
+
+impl<Index> Pretty<Index> for HNil where Index: Number {
+    fn repr() -> String {
+        return String::from("");
+    }
+}
+
+impl<A, Index> Pretty<Index> for HCons<Dead, A> where A: Pretty<Index>, Index: Number {
+    fn repr() -> String {
+        format!("- {}", A::repr())
+    }
+}
+
+impl<A, Index> Pretty<Index> for HCons<Alive, A> where A: Pretty<Index>, Index: Number {
+    fn repr() -> String {
+        format!("+ {}", A::repr())
+    }
+}
 
 fn main() {
-    check_tree::<BNode<BNode<Leaf, Leaf>, BNode<RNode<Leaf, Leaf>, Leaf>>>();
-    //add::<P10<Zero>, P5<Zero>>();
-    //mul::<I4, P10<Zero>, _>();
-    //pow::<I2, I5, _>();
-    //conditional_mul::<False, I2, P50<I5>, _ >()
-    //conditional_generic::<False, <I5 as Add<I2>>::Out, <I3 as Add<P50<I2>>>::Out, _>()
-    //equal::<P10<Zero>, P10<Zero>, _>()
-    //max::<P10<Zero>, P50<Succ<Zero>>, _>();
+    //tree well formed: compiles
+    //check_tree::<BNode<i32, BNode<i32, Leaf, Leaf>, BNode<i32, RNode<i32, Leaf, Leaf>, Leaf>>>();
+    //tree not well formed: doesn't compile
+    //check_tree::<BNode<i32, BNode<i32, Leaf, Leaf>, BNode<i32, BNode<i32, Leaf, Leaf>, Leaf>>>();
+
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn arithmetic_works() {
+        assert_eq!(incr::<I3, _>(), 4);
+        assert_eq!(decr::<Zero, _>(), 0);
+        assert_eq!(decr::<I5, _>(), 4);
+        assert_eq!(add::<P10<Zero>, P5<Zero>, _>(), 15);
+        assert_eq!(sub::<P10<Zero>, P5<Zero>, _>(), 5);
+        assert_eq!(sub::<P10<Zero>, P10<I1>, _>(), 0);
+        assert_eq!(mul::<I4, P10<Zero>, _>(), 40);
+        assert_eq!(div::<P10<Zero>, I5, _>(), 2);
+        assert_eq!(div::<P50<Zero>, I5, _>(), 10);
+        assert_eq!(div::<I3, I4, _>(), 0);
+        assert_eq!(pow::<I2, I5, _>(), 32);
+        assert_eq!(max::<P10<Zero>, P50<Succ<Zero>>, _>(), 51);
+        assert_eq!(max::<Zero, Zero, _>(), 0);
+        assert_eq!(max::<I1, Zero, _>(), 1);
+        assert_eq!(conditional_generic::<False, <I5 as Add<I2>>::Out, <I3 as Add<P50<I2>>>::Out, _>(), 55);
+        assert_eq!(conditional_generic::<True, <I5 as Add<I2>>::Out, <I3 as Add<P50<I2>>>::Out, _>(), 7);
+    }
+}
+
+
