@@ -98,8 +98,28 @@ impl<RHS> Div<RHS> for Zero {
     type Out = Zero;
 }
 
-impl<A, RHS> Div<RHS> for Succ<A> where RHS: Sub<Succ<A>>,  <RHS as Sub<Succ<A>>>::Out: Div<RHS> {
-    type Out = Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>;
+impl<A, RHS> Div<RHS> for Succ<A> where Succ<A>: Larger<RHS>,
+                                        RHS: Sub<Succ<A>>,
+                                        <RHS as Sub<Succ<A>>>::Out: Div<RHS>,
+                                        <Succ<A> as Larger<RHS>>::Out: If<Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>, <<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>,
+                                        <<Succ<A> as Larger<RHS>>::Out as If<Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>, <<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>>::Out: Number
+{
+    type Out = <<Succ<A> as Larger<RHS>>::Out as If<Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>, <<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>>::Out;
+    //type Out = Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>;
+}
+
+trait Remainder<RHS> {
+    type Out: Number;
+}
+
+impl<RHS, A> Remainder<RHS> for Succ<A> where Succ<A>: Larger<RHS>,
+                                              RHS: Sub<Succ<A>>,
+                                              <RHS as Sub<Succ<A>>>::Out: Div<RHS>,
+                                              <Succ<A> as Larger<RHS>>::Out: If<Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>, <<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>,
+                                              <<Succ<A> as Larger<RHS>>::Out as If<Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>, <<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>>::Out: Number,
+                                              <<Succ<A> as Larger<RHS>>::Out as If<Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>, <<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>>::Out: Mul<RHS>,
+                                              <<<Succ<A> as Larger<RHS>>::Out as If<Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>, <<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>>::Out as Mul<RHS>>::Out: Sub<Succ<A>> {
+    type Out = <<<Succ<A> as Div<RHS>>::Out as Mul<RHS>>::Out as Sub<Succ<A>>>::Out;
 }
 
 trait Pow<A> {
@@ -165,6 +185,31 @@ impl Max<Zero> for Zero {
     type Out = Zero;
 }
 
+
+// Checks if Self is larger or equal to the Type Parameter. Returns a Boolean type True/False
+trait Larger<B> {
+    type Out: Number;
+}
+
+//Recursion start
+impl<A, B> Larger<Succ<B>> for Succ<A> where A: Larger<B> {
+    type Out = <A as Larger<B>>::Out;
+}
+
+//Recursion end: Type Self < B (trait parameter) are Equal
+impl<A> Larger<Succ<A>> for Zero where A: Number {
+    type Out = False;
+}
+//Recursion end: Type Self > B (trait parameter) are Equal
+impl<A> Larger<Zero> for Succ<A> where A: Number {
+    type Out = True;
+}
+
+//Recursion end: Type Self and B are Equal
+impl Larger<Zero> for Zero {
+    type Out = True;
+}
+
 // When calling the function the last generic Type (B) must be set to '_' in order for the compiler to infer the result type of the operation.
 // If we set the B generic type and it is not the result type of the operation, the rust unification process will fail and the type checker will error out.
 fn incr<A, B>() -> i32 where A: Incr<Out=B>, B: Number {
@@ -188,6 +233,10 @@ fn mul<LHS, RHS, Result>() -> i32 where LHS: Mul<RHS, Out=Result>, Result: Numbe
 }
 
 fn div<LHS, RHS, Result>() -> i32 where LHS: Div<RHS, Out=Result>, Result: Number {
+    Result::repr()
+}
+
+fn remainder<LHS, RHS, Result>() -> i32 where LHS: Remainder<RHS, Out=Result>, Result: Number {
     Result::repr()
 }
 
@@ -330,6 +379,8 @@ mod tests {
         assert_eq!(div::<P10<Zero>, I5, _>(), 2);
         assert_eq!(div::<P50<Zero>, I5, _>(), 10);
         assert_eq!(div::<I3, I4, _>(), 0);
+        assert_eq!(remainder::<I3, I4, _>(), 3);
+        assert_eq!(remainder::<P10<I1>, P5<I2>, _>(), 4);
         assert_eq!(pow::<I2, I5, _>(), 32);
         assert_eq!(max::<P10<Zero>, P50<Succ<Zero>>, _>(), 51);
         assert_eq!(max::<Zero, Zero, _>(), 0);
