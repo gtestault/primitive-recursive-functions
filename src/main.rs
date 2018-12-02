@@ -2,10 +2,67 @@
 #![recursion_limit="100000"]
 use std::marker::PhantomData;
 
+//Game of Life Array 11x11
+type BLINKER = FiveEmptyRows<Empty4<Alive3<Empty4<FiveEmptyRows<HNil>>>>>;
+type BLOCK =  FourEmptyRows<Empty4<Alive2<Empty4<HCons<Dead, Empty4<Alive2<Empty4<HCons<Dead, FourEmptyRows<EmptyRow<HNil>>>>>>>>>>>;
+type ARRAY = HCons<Alive, Empty10<HCons<Alive, Empty10<HCons<Alive, HCons<Alive, Empty10<Empty10<HCons<Alive, HCons<Alive, HCons<Alive, Empty10<HCons<Alive,HCons<Dead, Empty5<HCons<Alive, Empty10<HCons<Alive, Empty10<HCons<Alive, Empty10<HCons<Alive, HCons<Alive, HCons<Dead, Empty10<Empty5<HCons<Alive, Empty5<HNil>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
+
+fn main() {
+    println!("\n\nGeneration 1:");
+    println!("{}", <BLINKER as Pretty<I1>>::repr());
+    println!("\n\n");
+    println!("{}", evolve_for::<BLINKER, I2>());
+}
+
+//Array Structure
+struct HCons<Head, Tail> {
+    h: PhantomData<Head>,
+    t: PhantomData<Tail>
+}
+
+//End of Array
+struct HNil{}
+
+//Cell Status
+struct Alive{}
+struct Dead{}
+
+//Truth types
+type False = Zero;
+type True = Succ<Zero>;
+
+//Nat Number types
 struct Zero{}
 struct Succ<A> {
     phantom: PhantomData<A>
 }
+type I1 = Succ<Zero>;
+type I2 = Succ<Succ<Zero>>;
+type I3 = Succ<Succ<Succ<Zero>>>;
+type I4 = Succ<Succ<Succ<Succ<Zero>>>>;
+type I5 = Succ<Succ<Succ<Succ<Succ<Zero>>>>>;
+type I6 = P5<I1>;
+type I7 = P5<I2>;
+type I8 = P5<I3>;
+type I9 = P5<I4>;
+type I10 = P10<Zero>;
+type I11 = P10<Succ<Zero>>;
+type I110 = P50<P50<P10<Zero>>>;
+
+//Nat Number Constructors
+type P5<N> = Succ<Succ<Succ<Succ<Succ<N>>>>>;
+type P10<N> = P5<P5<N>>;
+type P50<N> = P10<P10<P10<P10<P10<N>>>>>;
+
+//type constructors to build a Conway Game of Life array.
+type Empty5<A> = HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, A>>>>>;
+type Empty10<A> = Empty5<Empty5<A>>;
+type EmptyRow<A> = Empty10<HCons<Dead, A>>;
+type Empty4<A> = HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, A>>>>;
+type FourEmptyRows<A> = EmptyRow<EmptyRow<EmptyRow<EmptyRow<A>>>>;
+type FiveEmptyRows<A> = EmptyRow<EmptyRow<EmptyRow<EmptyRow<EmptyRow<A>>>>>;
+type Alive2<A> = HCons<Alive, HCons<Alive, A>>;
+type Alive3<A> = HCons<Alive, HCons<Alive, HCons<Alive, A>>>;
 
 trait Number {
     fn repr() -> i32;
@@ -355,22 +412,6 @@ fn larger_equal<A, B, Result>() -> i32 where A: Larger<B, Out=Result>, Result: N
     Result::repr()
 }
 
-type False = Zero;
-type True = Succ<Zero>;
-
-type I1 = Succ<Zero>;
-type I2 = Succ<Succ<Zero>>;
-type I3 = Succ<Succ<Succ<Zero>>>;
-type I4 = Succ<Succ<Succ<Succ<Zero>>>>;
-type I5 = Succ<Succ<Succ<Succ<Succ<Zero>>>>>;
-type I6 = P5<I1>;
-type I7 = P5<I2>;
-type I8 = P5<I3>;
-type I9 = P5<I4>;
-type P5<N> = Succ<Succ<Succ<Succ<Succ<N>>>>>;
-type P10<N> = P5<P5<N>>;
-type P50<N> = P10<P10<P10<P10<P10<N>>>>>;
-
 // Red Black Tree Type Checking START -------------------------------------------
 struct BNode<V, L, R> {
     value: V,
@@ -422,27 +463,6 @@ fn check_tree<A>() where A: Node {
 
 // Red Black Tree Type Checking END -------------------------------------------
 
-struct HCons<Head, Tail> {
-    h: PhantomData<Head>,
-    t: PhantomData<Tail>
-}
-
-struct HNil{}
-
-struct Alive{}
-struct Dead{}
-
-type Empty5<A> = HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, A>>>>>;
-type Empty10<A> = Empty5<Empty5<A>>;
-type EmptyRow<A> = Empty10<HCons<Dead, A>>;
-type Empty4<A> = HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, A>>>>;
-type FourEmptyRows<A> = EmptyRow<EmptyRow<EmptyRow<EmptyRow<A>>>>;
-type FiveEmptyRows<A> = EmptyRow<EmptyRow<EmptyRow<EmptyRow<EmptyRow<A>>>>>;
-type Alive2<A> = HCons<Alive, HCons<Alive, A>>;
-type Alive3<A> = HCons<Alive, HCons<Alive, HCons<Alive, A>>>;
-type I10 = P10<Zero>;
-type I11 = P10<Succ<Zero>>;
-type I110 = P50<P50<P10<Zero>>>;
 type RowSize = I11;
 type ColSize = RowSize;
 type TopPosition = P10<I1>;
@@ -778,18 +798,6 @@ fn evolve_for<Array, N>() -> String where N: EvolveFor<Array, N> {
     <N as EvolveFor<Array, N>>::repr()
 }
 
-//Game of Life Array 11x11
-type BLINKER = FiveEmptyRows<Empty4<Alive3<Empty4<FiveEmptyRows<HNil>>>>>;
-type BLOCK =  FourEmptyRows<Empty4<Alive2<Empty4<HCons<Dead, Empty4<Alive2<Empty4<HCons<Dead, FourEmptyRows<EmptyRow<HNil>>>>>>>>>>>;
-type ARRAY = HCons<Alive, Empty10<HCons<Alive, Empty10<HCons<Alive, HCons<Alive, Empty10<Empty10<HCons<Alive, HCons<Alive, HCons<Alive, Empty10<HCons<Alive,HCons<Dead, Empty5<HCons<Alive, Empty10<HCons<Alive, Empty10<HCons<Alive, Empty10<HCons<Alive, HCons<Alive, HCons<Dead, Empty10<Empty5<HCons<Alive, Empty5<HNil>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
-
-fn main() {
-    println!("\n\nGeneration 1:");
-    println!("{}", <BLINKER as Pretty<I1>>::repr());
-    println!("\n\n");
-    println!("{}", evolve_for::<BLINKER, I2>());
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -907,5 +915,3 @@ mod tests {
         assert_eq!(fate::<Alive, I8, _>(), 0);
     }
 }
-
-
