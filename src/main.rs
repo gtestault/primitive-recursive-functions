@@ -14,6 +14,18 @@ fn main() {
     println!("{}", evolve_for::<BLINKER, I2>());
 }
 
+//type constructors to build your own Conway Game of Life array.
+type Empty5<A> = HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, A>>>>>;
+type Empty10<A> = Empty5<Empty5<A>>;
+type EmptyRow<A> = Empty10<HCons<Dead, A>>;
+type Empty4<A> = HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, A>>>>;
+type FourEmptyRows<A> = EmptyRow<EmptyRow<EmptyRow<EmptyRow<A>>>>;
+type FiveEmptyRows<A> = EmptyRow<EmptyRow<EmptyRow<EmptyRow<EmptyRow<A>>>>>;
+type Alive2<A> = HCons<Alive, HCons<Alive, A>>;
+type Alive3<A> = HCons<Alive, HCons<Alive, HCons<Alive, A>>>;
+
+//IMPLEMENTATION------------------------------------------------------------------------------------
+
 //Array Structure
 struct HCons<Head, Tail> {
     h: PhantomData<Head>,
@@ -55,16 +67,6 @@ type I110 = P50<P50<P10<Zero>>>;
 type P5<N> = Succ<Succ<Succ<Succ<Succ<N>>>>>;
 type P10<N> = P5<P5<N>>;
 type P50<N> = P10<P10<P10<P10<P10<N>>>>>;
-
-//type constructors to build a Conway Game of Life array.
-type Empty5<A> = HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, A>>>>>;
-type Empty10<A> = Empty5<Empty5<A>>;
-type EmptyRow<A> = Empty10<HCons<Dead, A>>;
-type Empty4<A> = HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, A>>>>;
-type FourEmptyRows<A> = EmptyRow<EmptyRow<EmptyRow<EmptyRow<A>>>>;
-type FiveEmptyRows<A> = EmptyRow<EmptyRow<EmptyRow<EmptyRow<EmptyRow<A>>>>>;
-type Alive2<A> = HCons<Alive, HCons<Alive, A>>;
-type Alive3<A> = HCons<Alive, HCons<Alive, HCons<Alive, A>>>;
 
 trait Number {
     fn repr() -> i32;
