@@ -105,7 +105,6 @@ impl<A, RHS> Div<RHS> for Succ<A> where Succ<A>: Larger<RHS>,
                                         <<Succ<A> as Larger<RHS>>::Out as If<Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>, <<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>>::Out: Number
 {
     type Out = <<Succ<A> as Larger<RHS>>::Out as If<Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>, <<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>>::Out;
-    //type Out = Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>;
 }
 
 trait Remainder<RHS> {
@@ -220,8 +219,8 @@ trait Less<A> {
 }
 
 //Recursion start
-impl<A, B> Less<Succ<B>> for Succ<A> where A: Larger<B> {
-    type Out = <A as Larger<B>>::Out;
+impl<A, B> Less<Succ<B>> for Succ<A> where A: Less<B> {
+    type Out = <A as Less<B>>::Out;
 }
 
 //Recursion end: Type Self < B (trait parameter) are Equal
@@ -311,8 +310,13 @@ fn equal_failing<A, B, C>() where A: EqualFailing<B, Out=C>, C: Number {
 fn equal<A, B, Result>() -> i32 where A: Equal<B, Out=Result>, Result: Number {
     Result::repr()
 }
+
 fn max<A, B, C>() -> i32 where A: Max<B, Out=C>, C: Number {
     C::repr()
+}
+
+fn less<A, B, Result>() -> i32 where A: Less<B, Out=Result>, Result: Number {
+    Result::repr()
 }
 
 type False = Zero;
@@ -323,6 +327,9 @@ type I2 = Succ<Succ<Zero>>;
 type I3 = Succ<Succ<Succ<Zero>>>;
 type I4 = Succ<Succ<Succ<Succ<Zero>>>>;
 type I5 = Succ<Succ<Succ<Succ<Succ<Zero>>>>>;
+type I6 = P5<I1>;
+type I7 = P5<I2>;
+type I8 = P5<I3>;
 type I9 = P5<I4>;
 type P5<N> = Succ<Succ<Succ<Succ<Succ<N>>>>>;
 type P10<N> = P5<P5<N>>;
@@ -470,19 +477,25 @@ impl<Tail> AliveAt<Zero> for HCons<Dead, Tail> {
 }
 
 trait Top<Index> {
-    type Out;
+    type Out : Number;
+}
+
+impl<Index, Head, Tail, LessResult, SubResult, AliveResult> Top<Index> for HCons<Head, Tail> where Index: Less<RowSize, Out=LessResult>,
+                                                                                                   RowSize: Sub<Index, Out=SubResult>,
+                                                                                                   HCons<Head, Tail>: AliveAt<SubResult, Out=AliveResult>,
+                                                                                                   //compiler required Trait Bounds
+                                                                                                   LessResult: If<False, AliveResult> + Number,
+                                                                                                   SubResult: Number,
+                                                                                                   <LessResult as If<False, AliveResult>>::Out: Number
+{
+    type Out = <LessResult as If<False, AliveResult>>::Out;
 }
 
 trait TopL {
     type Out;
 }
 
-impl<Index, Head, Tail> Top<Index> for HCons<Head, Tail> where Index: Less<RowSize> + Decr,
-                                                               HCons<Head, Tail>: AliveAt<<<<<<<<<<<<Index as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out>,
-                                                               <Index as Less<Succ<Succ<Succ<Succ<Succ<Succ<Succ<Succ<Succ<Succ<Succ<Zero>>>>>>>>>>>>>::Out: If<Zero, <HCons<Head, Tail> as AliveAt<<<<<<<<<<<<Index as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out>>::Out>
-{
-    type Out = <<Index as Less<RowSize>>::Out as If<False, <HCons<Head, Tail> as AliveAt<<TopPosition as Sub<Index>>::Out>>::Out>>::Out;
-}
+
 
 trait TopR {
     type Out;
@@ -492,7 +505,7 @@ trait Left<Index> {
     type Out;
 }
 
-impl<Index, Head, Tail, RemainResult, EqualResult, SubResult, AliveResult> Left<Index> for HCons<Head, Tail> where Index: Remainder<Succ<RowSize>, Out=RemainResult>,
+impl<Index, Head, Tail, RemainResult, EqualResult, SubResult, AliveResult> Left<Index> for HCons<Head, Tail> where Index: Remainder<RowSize, Out=RemainResult>,
                                                                                                       RemainResult: Equal<Zero, Out=EqualResult> + Number,
                                                                                                       I1: Sub<Index, Out=SubResult>, HCons<Head,Tail>: AliveAt<SubResult, Out=AliveResult>,
                                                                                                       //Compiler required where Clauses
@@ -518,8 +531,8 @@ fn alive_at<A, B>() -> i32 where A: AliveAt<B>,
     <<A as AliveAt<B>>::Out as Number>::repr()
 }
 
-fn top<A, B>() -> i32 where A: Top<B>, <A as Top<B>>::Out: Number{
-    <<A as Top<B>>::Out as Number>::repr()
+fn top<Array, Index, Result>() -> i32 where Array: Top<Index, Out=Result>, Result: Number {
+    Result::repr()
 }
 
 fn left<Array, Index, Result>() -> i32 where Array: Left<Index, Out=Result>, Result: Number {
@@ -558,6 +571,12 @@ mod tests {
         assert_eq!(equal::<Zero, Zero, _>(), 1);
         assert_eq!(equal::<Zero, I1, _>(), 0);
         assert_eq!(equal::<I1, Zero, _>(), 0);
+        assert_eq!(less::<Zero, Zero, _>(), 0);
+        assert_eq!(less::<Zero, I1, _>(), 1);
+        assert_eq!(less::<I3, P10<Zero>, _>(), 1);
+        assert_eq!(less::<I3, P10<Zero>, _>(), 1);
+        assert_eq!(less::<P10<Zero>, I3 , _>(), 0);
+
         assert_eq!(conditional_generic::<False, <I5 as Add<I2>>::Out, <I3 as Add<P50<I2>>>::Out, _>(), 55);
         assert_eq!(conditional_generic::<True, <I5 as Add<I2>>::Out, <I3 as Add<P50<I2>>>::Out, _>(), 7);
     }
@@ -568,8 +587,24 @@ mod tests {
     fn game_of_life_works() {
         assert_eq!(alive_at::<ARRAY, P10<I2>>(), 0);
         //assert_eq!(alive_at::<ARRAY, I2>(), 0);
+
+        //left
+        assert_eq!(left::<ARRAY, Zero, _>(), 0);
         assert_eq!(left::<ARRAY, I1, _>(), 1);
         assert_eq!(left::<ARRAY, I2, _>(), 0);
+        assert_eq!(left::<ARRAY, P50<P10<P10<P10<P10<P5<I4>>>>>>, _>(), 0);
+        assert_eq!(left::<ARRAY, P50<P10<P10<P10<P10<P5<I3>>>>>>, _>(), 1);
+        assert_eq!(left::<ARRAY, P10<P10<I4>>, _>(), 1);
+        assert_eq!(left::<ARRAY, P10<P10<P10<P10<I7>>>>, _>(), 1);
+        //top
+        assert_eq!(top::<ARRAY, P10<Zero>, _>(), 0);
+        assert_eq!(top::<ARRAY, Zero, _>(), 0);
+        assert_eq!(top::<ARRAY, P10<P10<P10<I3>>>, _>(), 1);
+        assert_eq!(top::<ARRAY, P50<I5>, _>(), 1);
+        assert_eq!(top::<ARRAY, P50<I8>, _>(), 0);
+        assert_eq!(top::<ARRAY, P50<P50<P10<P10<Zero>>>>, _>(), 0);
+        assert_eq!(top::<ARRAY, P50<P50<I9>>, _>(), 1);
+
     }
 }
 
