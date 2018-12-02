@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-#![recursion_limit="500"]
+#![recursion_limit="100000"]
 use std::marker::PhantomData;
 
 struct Zero{}
@@ -12,6 +12,18 @@ trait Number {
 }
 
 impl Number for Zero {
+    fn repr() -> i32 {
+        0
+    }
+}
+
+impl Number for Alive {
+    fn repr() -> i32 {
+        1
+    }
+}
+
+impl Number for Dead {
     fn repr() -> i32 {
         0
     }
@@ -37,6 +49,18 @@ impl<A> Incr for Succ<A> where A: Number {
     type Out = Succ<Succ<A>>;
 }
 
+trait Decr {
+    type Out: Number + Decr;
+}
+
+impl Decr for Zero {
+    type Out = Zero;
+}
+
+impl<A> Decr for Succ<A> where A: Number + Decr {
+    type Out = A;
+}
+
 trait Add<RHS> {
     type Out: Number;
 }
@@ -51,6 +75,19 @@ impl<LHS, RHS> Add<RHS> for Succ<LHS> where RHS: Add<LHS> {
     type Out = Succ<<RHS as Add<LHS>>::Out>;
 }
 
+// Subtraction only on natural numbers. Negative numbers are mapped to Zero.
+trait Sub<RHS> {
+    type Out: Number;
+}
+
+impl<LHS> Sub<LHS> for Zero where LHS: Number {
+    type Out = LHS;
+}
+
+impl<A, LHS> Sub<LHS> for Succ<A> where A: Sub<<LHS as Decr>::Out>, LHS: Decr {
+    type Out =  <A as Sub<<LHS as Decr>::Out>>::Out;
+}
+
 trait Mul<RHS> {
     type Out: Number;
 }
@@ -63,6 +100,42 @@ impl<RHS> Mul<RHS> for Zero {
 // f(x, y + 1) = f(x, y) + x
 impl <A, RHS> Mul<RHS> for Succ<A> where A: Mul<RHS>, A::Out: Add<RHS> {
     type Out = <<A as Mul<RHS>>::Out as Add<RHS>>::Out;
+}
+
+trait Div<RHS> {
+    type Out: Number;
+}
+
+impl<RHS> Div<RHS> for Zero {
+    type Out = Zero;
+}
+
+impl<A, RHS> Div<RHS> for Succ<A> where Succ<A>: Larger<RHS>,
+                                        RHS: Sub<Succ<A>>,
+                                        <RHS as Sub<Succ<A>>>::Out: Div<RHS>,
+                                        <Succ<A> as Larger<RHS>>::Out: If<Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>, <<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>,
+                                        <<Succ<A> as Larger<RHS>>::Out as If<Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>, <<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>>::Out: Number
+{
+    type Out = <<Succ<A> as Larger<RHS>>::Out as If<Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>, <<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>>::Out;
+}
+
+trait Remainder<RHS> {
+    type Out: Number;
+}
+
+// (a mod b) = a - (a/b)*b where (a/b) is integer division.
+impl<RHS, A> Remainder<RHS> for Succ<A> where Succ<A>: Larger<RHS>,
+                                              RHS: Sub<Succ<A>>,
+                                              <RHS as Sub<Succ<A>>>::Out: Div<RHS>,
+                                              <Succ<A> as Larger<RHS>>::Out: If<Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>, <<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>,
+                                              <<Succ<A> as Larger<RHS>>::Out as If<Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>, <<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>>::Out: Number,
+                                              <<Succ<A> as Larger<RHS>>::Out as If<Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>, <<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>>::Out: Mul<RHS>,
+                                              <<<Succ<A> as Larger<RHS>>::Out as If<Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>, <<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>>::Out as Mul<RHS>>::Out: Sub<Succ<A>> {
+    type Out = <<<Succ<A> as Div<RHS>>::Out as Mul<RHS>>::Out as Sub<Succ<A>>>::Out;
+}
+
+impl<RHS> Remainder<RHS> for Zero {
+    type Out = Zero;
 }
 
 trait Pow<A> {
@@ -93,16 +166,16 @@ impl<A, B> If<A, B> for Succ<Zero> {
 
 
 //Check if type Self and A are equal: if they are return Succ<Zero>, if not unification fails -> compiler error
-trait Equal<A> {
+trait EqualFailing<A> {
     type Out;
 }
 
-impl Equal<Zero> for Zero {
+impl EqualFailing<Zero> for Zero {
     type Out = Succ<Zero>;
 }
 
-impl<A, B> Equal<Succ<B>> for Succ<A> where B: Equal<A> {
-    type Out = <B as Equal<A>>::Out;
+impl<A, B> EqualFailing<Succ<B>> for Succ<A> where B: EqualFailing<A> {
+    type Out = <B as EqualFailing<A>>::Out;
 }
 
 trait Max<B> {
@@ -128,38 +201,158 @@ impl Max<Zero> for Zero {
     type Out = Zero;
 }
 
+
+// Checks if Self is larger or equal to the Type Parameter. Returns a Boolean type True/False
+trait Larger<B> {
+    type Out: Number;
+}
+
+//Recursion start
+impl<A, B> Larger<Succ<B>> for Succ<A> where A: Larger<B> {
+    type Out = <A as Larger<B>>::Out;
+}
+
+//Recursion end: Type Self < B (trait parameter) are Equal
+impl<A> Larger<Succ<A>> for Zero where A: Number {
+    type Out = False;
+}
+//Recursion end: Type Self > B (trait parameter) are Equal
+impl<A> Larger<Zero> for Succ<A> where A: Number {
+    type Out = True;
+}
+
+//Recursion end: Type Self and B are Equal
+impl Larger<Zero> for Zero {
+    type Out = True;
+}
+
+trait Less<A> {
+    type Out: Number;
+}
+
+//Recursion start
+impl<A, B> Less<Succ<B>> for Succ<A> where A: Less<B> {
+    type Out = <A as Less<B>>::Out;
+}
+
+//Recursion end: Type Self < B (trait parameter) are Equal
+impl<A> Less<Succ<A>> for Zero where A: Number {
+    type Out = True;
+}
+//Recursion end: Type Self > B (trait parameter) are Equal
+impl<A> Less<Zero> for Succ<A> where A: Number {
+    type Out = False;
+}
+
+//Recursion end: Type Self and B are Equal
+impl Less<Zero> for Zero {
+    type Out = False;
+}
+
+
+trait Equal<B> {
+    type Out: Number;
+}
+
+//Recursion start
+impl<A, B> Equal<Succ<B>> for Succ<A> where A: Equal<B> {
+    type Out = <A as Equal<B>>::Out;
+}
+
+//Recursion end: Type Self < B (trait parameter) are Equal
+impl<A> Equal<Succ<A>> for Zero where A: Number {
+    type Out = False;
+}
+//Recursion end: Type Self > B (trait parameter) are Equal
+impl<A> Equal<Zero> for Succ<A> where A: Number {
+    type Out = False;
+}
+
+//Recursion end: Type Self and B are Equal
+impl Equal<Zero> for Zero {
+    type Out = True;
+}
+
+trait Or<B> {
+    type Out: Number;
+}
+
+impl Or<True> for False {
+    type Out = True;
+}
+
+impl Or<True> for True {
+    type Out = True;
+}
+
+impl Or<False> for True {
+    type Out = True;
+}
+
+impl Or<False> for False {
+    type Out = False;
+}
+
 // When calling the function the last generic Type (B) must be set to '_' in order for the compiler to infer the result type of the operation.
 // If we set the B generic type and it is not the result type of the operation, the rust unification process will fail and the type checker will error out.
-fn incr<A, B>() where A: Incr<Out=B>, B: Number {
-    println!("{}", B::repr());
+fn incr<A, B>() -> i32 where A: Incr<Out=B>, B: Number {
+    B::repr()
 }
 
-fn add<LHS, RHS, B>() where LHS: Add<RHS, Out=B>, B: Number {
-    println!("{}", B::repr());
+fn decr<A, B>() -> i32 where A: Decr<Out=B>, B: Number + Decr {
+    B::repr()
 }
 
-fn mul<LHS, RHS, B>() where LHS: Mul<RHS, Out=B>, B: Number {
-    println!("{}", B::repr());
+fn add<LHS, RHS, B>() -> i32 where LHS: Add<RHS, Out=B>, B: Number {
+    B::repr()
 }
 
-fn pow<A, E, B>() where E: Pow<A, Out=B>, B: Number {
-    println!("{}", B::repr());
+fn sub<LHS, RHS, Result>() -> i32 where RHS: Sub<LHS, Out=Result>, Result: Number {
+    Result::repr()
 }
 
-fn conditional_mul<A, B, C, D>() where A: If<<B as Mul<C>>::Out, Zero, Out=D>, B: Mul<C>, D: Number {
-    println!("{}", D::repr());
+fn mul<LHS, RHS, Result>() -> i32 where LHS: Mul<RHS, Out=Result>, Result: Number {
+    Result::repr()
 }
 
-fn conditional_generic<A, B, C, D>() where A: If<B, C, Out=D>, D: Number {
-    println!("{}", D::repr());
+fn div<LHS, RHS, Result>() -> i32 where LHS: Div<RHS, Out=Result>, Result: Number {
+    Result::repr()
 }
 
-fn equal<A, B, C>() where A: Equal<B, Out=C>, C: Number {
+fn remainder<LHS, RHS, Result>() -> i32 where LHS: Remainder<RHS, Out=Result>, Result: Number {
+    Result::repr()
+}
+
+fn pow<A, E, Result>() -> i32 where E: Pow<A, Out=Result>, Result: Number {
+    Result::repr()
+}
+
+fn conditional_mul<A, B, C, Result>() where A: If<<B as Mul<C>>::Out, Zero, Out=Result>, B: Mul<C>, Result: Number {
+    println!("{}", Result::repr());
+}
+
+fn conditional_generic<A, B, C, Result>() -> i32 where A: If<B, C, Out=Result>, Result: Number {
+    Result::repr()
+}
+
+fn equal_failing<A, B, C>() where A: EqualFailing<B, Out=C>, C: Number {
     println!("{}", C::repr());
 }
 
-fn max<A, B, C>() where A: Max<B, Out=C>, C: Number {
-    println!("{}", C::repr());
+fn equal<A, B, Result>() -> i32 where A: Equal<B, Out=Result>, Result: Number {
+    Result::repr()
+}
+
+fn max<A, B, C>() -> i32 where A: Max<B, Out=C>, C: Number {
+    C::repr()
+}
+
+fn less<A, B, Result>() -> i32 where A: Less<B, Out=Result>, Result: Number {
+    Result::repr()
+}
+
+fn larger_equal<A, B, Result>() -> i32 where A: Larger<B, Out=Result>, Result: Number {
+    Result::repr()
 }
 
 type False = Zero;
@@ -170,16 +363,22 @@ type I2 = Succ<Succ<Zero>>;
 type I3 = Succ<Succ<Succ<Zero>>>;
 type I4 = Succ<Succ<Succ<Succ<Zero>>>>;
 type I5 = Succ<Succ<Succ<Succ<Succ<Zero>>>>>;
+type I6 = P5<I1>;
+type I7 = P5<I2>;
+type I8 = P5<I3>;
+type I9 = P5<I4>;
 type P5<N> = Succ<Succ<Succ<Succ<Succ<N>>>>>;
 type P10<N> = P5<P5<N>>;
 type P50<N> = P10<P10<P10<P10<P10<N>>>>>;
 
-
-struct BNode<L, R> {
+// Red Black Tree Type Checking START -------------------------------------------
+struct BNode<V, L, R> {
+    value: V,
     left: PhantomData<L>,
     right: PhantomData<R>,
 }
-struct RNode<L, R> {
+struct RNode<V, L, R> {
+    value: V,
     left: PhantomData<L>,
     right: PhantomData<R>,
 }
@@ -188,15 +387,15 @@ struct Leaf {
 }
 
 trait Node where {}
-impl<L, R> Node for BNode<L, R>  where L: Height, L::Out: Equal<<R as Height>::Out>, R: Height {}
-impl<L, R> Node for RNode<L, R>  where L: Black + Height, L::Out: Equal<<R as Height>::Out>,  R: Black + Height {}
+impl<V, L, R> Node for BNode<V, L, R>  where L: Height, L::Out: EqualFailing<<R as Height>::Out>, R: Height {}
+impl<V, L, R> Node for RNode<V, L, R>  where L: Black + Height, L::Out: EqualFailing<<R as Height>::Out>,  R: Black + Height {}
 
 trait Black{}
 trait Red{}
 
-impl<L, R> Black for BNode<L, R>{}
+impl<V, L, R> Black for BNode<V, L, R>{}
 impl Black for Leaf{}
-impl<L, R> Red for RNode<L, R>{}
+impl<V, L, R> Red for RNode<V, L, R>{}
 
 trait Height { type Out: Number; }
 
@@ -204,11 +403,11 @@ impl Height for Leaf {
     type Out = Zero;
 }
 
-impl<L, R> Height for BNode<L, R> where L: Height, R: Height, <L as Height>::Out: Max<<R as Height>::Out> {
+ impl<V, L, R> Height for BNode<V, L, R> where L: Height, R: Height, <L as Height>::Out: Max<<R as Height>::Out> {
     type Out = Succ<<<L as Height>::Out as Max<<R as Height>::Out>>::Out>;
 }
 
-impl<L, R> Height for RNode<L, R>  where L: Height, R: Height, <L as Height>::Out: Max<<R as Height>::Out> {
+impl<V, L, R> Height for RNode<V, L, R>  where L: Height, R: Height, <L as Height>::Out: Max<<R as Height>::Out> {
     type Out = <<L as Height>::Out as Max<<R as Height>::Out>>::Out;
 }
 
@@ -216,14 +415,497 @@ fn check_tree<A>() where A: Node {
 
 }
 
+//    tree well formed: compiles
+//    check_tree::<BNode<i32, BNode<i32, Leaf, Leaf>, BNode<i32, RNode<i32, Leaf, Leaf>, Leaf>>>();
+//    tree not well formed: doesn't compile
+//    check_tree::<BNode<i32, BNode<i32, Leaf, Leaf>, BNode<i32, BNode<i32, Leaf, Leaf>, Leaf>>>();
+
+// Red Black Tree Type Checking END -------------------------------------------
+
+struct HCons<Head, Tail> {
+    h: PhantomData<Head>,
+    t: PhantomData<Tail>
+}
+
+struct HNil{}
+
+struct Alive{}
+struct Dead{}
+
+type Empty5<A> = HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, A>>>>>;
+type Empty10<A> = Empty5<Empty5<A>>;
+type EmptyRow<A> = Empty10<HCons<Dead, A>>;
+type Empty4<A> = HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, A>>>>;
+type FourEmptyRows<A> = EmptyRow<EmptyRow<EmptyRow<EmptyRow<A>>>>;
+type FiveEmptyRows<A> = EmptyRow<EmptyRow<EmptyRow<EmptyRow<EmptyRow<A>>>>>;
+type Alive2<A> = HCons<Alive, HCons<Alive, A>>;
+type Alive3<A> = HCons<Alive, HCons<Alive, HCons<Alive, A>>>;
+type I10 = P10<Zero>;
+type I11 = P10<Succ<Zero>>;
+type I110 = P50<P50<P10<Zero>>>;
+type RowSize = I11;
+type ColSize = RowSize;
+type TopPosition = P10<I1>;
+
+trait LineBreak {
+    fn repr() -> String;
+}
+
+impl LineBreak for True {
+    fn repr() -> String {
+        String::from("\n")
+    }
+}
+
+impl LineBreak for False {
+    fn repr() -> String {
+        String::from("")
+    }
+}
+
+fn line_break<Index>() -> String where <<Index as Remainder<I11>>::Out as Equal<Zero>>::Out: LineBreak, Index: Remainder<I11>,
+                                          <Index as Remainder<I11>>::Out: Equal<Zero>
+   {
+    <<<Index as Remainder<I11>>::Out as Equal<Zero>>::Out as LineBreak>::repr()
+}
+
+trait Pretty<Index> where Index: Number {
+    fn repr() -> String;
+}
+
+impl<Index> Pretty<Index> for HNil where Index: Number {
+    fn repr() -> String {
+        return String::from("");
+    }
+}
+
+impl<A, Index> Pretty<Index> for HCons<Dead, A> where A: Pretty<Succ<Index>>, Index: Number + Remainder<I11>,
+                                                      <Index as Remainder<I11>>::Out: Equal<Zero>,
+                                                      <<Index as Remainder<I11>>::Out as Equal<Zero>>::Out: LineBreak
+{
+    fn repr() -> String {
+        format!("- {}{}", line_break::<Index>(), <A as Pretty<Succ<Index>>>::repr())
+    }
+}
+
+impl<A, Index> Pretty<Index> for HCons<Alive, A> where A: Pretty<Succ<Index>>, Index: Number + Remainder<I11>,
+                                                       <Index as Remainder<I11>>::Out: Equal<Zero>,
+                                                       <<Index as Remainder<I11>>::Out as Equal<Zero>>::Out: LineBreak  {
+    fn repr() -> String {
+        format!("X {}{}", line_break::<Index>(), <A as Pretty<Succ<Index>>>::repr())
+    }
+}
+
+trait Evolve<Index, Array> {
+    type Out;
+}
+
+impl<Head, Tail, Index, Array, TopResult, TopLeft, TopRight, LeftResult, RightResult, BotResult, BotLeft, BotRight, TotalAlive, CellFate> Evolve<Index, Array> for HCons<Head, Tail> where Array: Top<Index, Out=TopResult>,
+                                                                                                                                                                                           Array: TopL<Index, Out=TopLeft>,
+                                                                                                                                                                                           Array: TopR<Index, Out=TopRight>,
+                                                                                                                                                                                           Array: Left<Index, Out=LeftResult>,
+                                                                                                                                                                                           Array: Right<Index, Out=RightResult>,
+                                                                                                                                                                                           Array: Bot<Index, Out=BotResult>,
+                                                                                                                                                                                           Array: BotL<Index, Out=BotLeft>,
+                                                                                                                                                                                           Array: BotR<Index, Out=BotRight>,
+                                                                                                                                                                                           TopResult: Add8<TopLeft, TopRight, LeftResult, RightResult, BotResult, BotLeft, BotRight, Out=TotalAlive>,
+                                                                                                                                                                                           Head: Fate<TotalAlive, Out=CellFate>,
+                                                                                                                                                                                           //Compiler required bounds
+                                                                                                                                                                                           Tail: Evolve<Succ<Index>, Array>,
+                                                                                                                                                                                           TopResult: Number, TotalAlive: Number,
+{
+    type Out = HCons<CellFate, <Tail as Evolve<Succ<Index>, Array>>::Out>;
+}
+
+impl<Index, Array> Evolve<Index, Array> for HNil
+{
+    type Out = HNil;
+}
+
+trait EvolveFor<Array, N> {
+    fn repr() -> String;
+}
+
+impl<A, NextGen, B, N, GenerationNumber> EvolveFor<A, N> for Succ<B> where A: Evolve<Zero, A, Out=NextGen>,
+                                                   NextGen: Pretty<I1>, B: EvolveFor<NextGen, N> + Number + Sub<N, Out=GenerationNumber>,
+                                                   GenerationNumber: Number + Incr {
+    fn repr() -> String {
+        format!("Generation {}:\n{}\n\n{}", <<GenerationNumber as Incr>::Out as Number>::repr(), NextGen::repr(), <B as EvolveFor<NextGen, N>>::repr())
+    }
+}
+
+impl<Array, N> EvolveFor<Array, N> for Zero {
+    fn repr() -> String {
+        format!("")
+    }
+}
+
+trait Add8<B, C, D, E, F, G, H> {
+    type Out: Number;
+}
+
+impl<A, B, C, D, E, F, G, H, Add1Result, Add2Result, Add3Result, Add4Result, Add5Result, Add6Result, Add7Result> Add8<B, C, D, E, F, G, H> for A where A: Add<B, Out=Add1Result>,
+                                                                                                                                                       Add1Result: Add<C, Out=Add2Result> + Number,
+                                                                                                                                                       Add2Result: Add<D, Out=Add3Result> + Number,
+                                                                                                                                                       Add3Result: Add<E, Out=Add4Result> + Number,
+                                                                                                                                                       Add4Result: Add<F, Out=Add5Result> + Number,
+                                                                                                                                                       Add5Result: Add<G, Out=Add6Result> + Number,
+                                                                                                                                                       Add6Result: Add<H, Out=Add7Result> + Number,
+                                                                                                                                                       Add7Result: Number
+{
+    type Out = Add7Result;
+}
+
+trait Fate<Neighbours: Number> {
+    type Out;
+}
+
+//Any dead cell with exactly three live neighbors becomes a live cell, as if by reproduction.
+impl<Neighbours, BirthResult> Fate<Neighbours> for Dead where Neighbours: Equal<I3, Out=BirthResult> + Number,
+                                                              BirthResult: If<Alive, Dead> + Number {
+    type Out = <BirthResult as If<Alive, Dead>>::Out;
+}
+
+impl<Neighbours, Equal1Result, Equal2Result , Result> Fate<Neighbours> for Alive where Neighbours: Equal<I3, Out=Equal1Result> + Equal<I2, Out=Equal2Result> + Number,
+                                                                                       Equal1Result: Or<Equal2Result, Out=Result> + Number,
+                                                                                       Equal2Result: Number,
+                                                                                       Result:  If<Alive, Dead> + Number {
+    type Out = <Result as If<Alive, Dead>>::Out;
+}
+
+trait AliveAt<A> {
+    type Out;
+}
+
+impl<Head, Tail, A> AliveAt<Succ<A>> for HCons<Head, Tail> where Tail: AliveAt<A> {
+    type Out = <Tail as AliveAt<A>>::Out;
+}
+
+impl<Tail> AliveAt<Zero> for HCons<Alive, Tail> {
+    type Out = True;
+}
+
+impl<Tail> AliveAt<Zero> for HCons<Dead, Tail> {
+    type Out = False;
+}
+
+impl AliveAt<Zero> for HNil {
+    type Out = False;
+}
+
+impl<A> AliveAt<Succ<A>> for HNil {
+    type Out = False;
+}
+
+trait Top<Index> {
+    type Out : Number;
+}
+
+impl<Index, Head, Tail, LessResult, SubResult, AliveResult> Top<Index> for HCons<Head, Tail> where Index: Less<RowSize, Out=LessResult>,
+                                                                                                   RowSize: Sub<Index, Out=SubResult>,
+                                                                                                   HCons<Head, Tail>: AliveAt<SubResult, Out=AliveResult>,
+                                                                                                   //compiler required Trait Bounds
+                                                                                                   LessResult: If<False, AliveResult> + Number,
+                                                                                                   SubResult: Number,
+                                                                                                   <LessResult as If<False, AliveResult>>::Out: Number
+{
+    type Out = <LessResult as If<False, AliveResult>>::Out;
+}
+
+trait TopL<Index> {
+    type Out;
+}
+
+impl<Index, Head, Tail, LessResult, RemainResult, EqualResult, OrResult, SubResult, AliveResult> TopL<Index> for HCons<Head, Tail> where Index: Less<RowSize, Out=LessResult> + Remainder<RowSize, Out=RemainResult>,
+                                                                                                                                         RemainResult: Equal<Zero, Out=EqualResult> + Number,
+                                                                                                                                         EqualResult: Or<LessResult, Out = OrResult>,
+                                                                                                                                         Succ<RowSize>: Sub<Index, Out=SubResult>,
+                                                                                                                                         HCons<Head, Tail>: AliveAt<SubResult, Out=AliveResult>,
+                                                                                                                                         //compiler required Trait Bounds
+                                                                                                                                         LessResult: Number,
+                                                                                                                                         EqualResult: Number,
+                                                                                                                                         OrResult: Number + If <Zero, AliveResult>,
+                                                                                                                                         SubResult: Number
+
+{
+    type Out = <OrResult as If<False, AliveResult>>::Out;
+}
+
+
+
+trait TopR<Index> {
+    type Out;
+}
+
+impl<Index, Head, Tail, LessResult, RemainResult, EqualResult, OrResult, SubResult, AliveResult> TopR<Index> for HCons<Head, Tail> where Index: Less<RowSize, Out=LessResult> + Remainder<RowSize, Out=RemainResult>,
+                                                                                                                                         RemainResult: Equal<I10, Out=EqualResult> + Number,
+                                                                                                                                         EqualResult: Or<LessResult, Out = OrResult> + Number,
+                                                                                                                                         I10: Sub<Index, Out=SubResult>,
+                                                                                                                                         HCons<Head, Tail>: AliveAt<SubResult, Out=AliveResult>,
+                                                                                                                                         //compiler required Trait Bounds
+                                                                                                                                         LessResult: Number,
+                                                                                                                                         OrResult: Number + If<Zero, AliveResult>,
+                                                                                                                                         SubResult: Number
+
+{
+    type Out = <OrResult as If<False, AliveResult>>::Out;
+}
+
+trait Left<Index> {
+    type Out;
+}
+
+impl<Index, Head, Tail, RemainResult, EqualResult, SubResult, AliveResult> Left<Index> for HCons<Head, Tail> where Index: Remainder<RowSize, Out=RemainResult>,
+                                                                                                      RemainResult: Equal<Zero, Out=EqualResult> + Number,
+                                                                                                      I1: Sub<Index, Out=SubResult>, HCons<Head,Tail>: AliveAt<SubResult, Out=AliveResult>,
+                                                                                                      //Compiler required where Clauses
+                                                                                                      SubResult: Number, EqualResult: Number + If<Zero, AliveResult>
+{
+    type Out = <EqualResult as If<False, AliveResult>>::Out;
+}
+
+trait Right<Index> {
+    type Out;
+}
+
+impl<Index, Head, Tail, RemainResult, EqualResult, AddResult, AliveResult> Right<Index> for HCons<Head, Tail> where Index: Remainder<RowSize, Out=RemainResult>,
+                                                                                                                   RemainResult: Equal<I10, Out=EqualResult> + Number,
+                                                                                                                   I1: Add<Index, Out=AddResult>, HCons<Head,Tail>: AliveAt<AddResult, Out=AliveResult>,
+                                                                                                                   //Compiler required where Clauses
+                                                                                                                   AddResult: Number, EqualResult: Number + If<Zero, AliveResult> {
+    type Out = <EqualResult as If<False, AliveResult>>::Out;
+}
+
+trait BotL<Index> {
+    type Out;
+}
+
+impl<Index, Head, Tail, LargerResult, EqualResult, OrResult, RemainResult,  AddResult, AliveResult> BotL<Index> for HCons<Head, Tail> where Index: Larger<I110, Out=LargerResult> + Remainder<RowSize, Out=RemainResult>,
+                                                                                                                                            RemainResult: Equal<Zero, Out=EqualResult> + Number,
+                                                                                                                                            EqualResult: Or<LargerResult, Out = OrResult>,
+                                                                                                                                            I10: Add<Index, Out=AddResult>,
+                                                                                                                                            HCons<Head, Tail>: AliveAt<AddResult, Out=AliveResult>,
+                                                                                                                                            //Compiler required where Clauses
+                                                                                                                                            LargerResult: Number,
+                                                                                                                                            EqualResult: Number,
+                                                                                                                                            OrResult: Number + If<Zero, AliveResult>,
+                                                                                                                                            AddResult: Number
+
+{
+    type Out = <OrResult as If<False, AliveResult>>::Out;
+}
+
+trait Bot<Index> {
+    type Out;
+}
+
+impl<Index, Head, Tail, LargerResult, AddResult, AliveResult> Bot<Index> for HCons<Head, Tail> where Index: Larger<I110, Out=LargerResult>,
+                                                                                                     RowSize: Add<Index, Out=AddResult>,
+                                                                                                     HCons<Head, Tail>: AliveAt<AddResult, Out=AliveResult>,
+                                                                                                     //Compiler required where Clauses
+                                                                                                     LargerResult: Number + If<Zero, AliveResult>,
+                                                                                                     AddResult: Number
+{
+    type Out = <LargerResult as If<False, AliveResult>>::Out;
+}
+
+trait BotR<Index> {
+    type Out;
+}
+
+impl<Index, Head, Tail, LargerResult, EqualResult, OrResult, RemainResult,  AddResult, AliveResult> BotR<Index> for HCons<Head, Tail> where Index: Larger<I110, Out=LargerResult> + Remainder<RowSize, Out=RemainResult>,
+                                                                                                                                            RemainResult: Equal<I10, Out=EqualResult> + Number,
+                                                                                                                                            EqualResult: Or<LargerResult, Out = OrResult> + Number,
+                                                                                                                                            Succ<RowSize>: Add<Index, Out=AddResult>,
+                                                                                                                                            HCons<Head, Tail>: AliveAt<AddResult, Out=AliveResult>,
+                                                                                                                                            //Compiler required where Clauses
+                                                                                                                                            LargerResult: Number,
+                                                                                                                                            OrResult: If<Zero, AliveResult> + Number,
+                                                                                                                                            AddResult: Number
+
+{
+    type Out = <OrResult as If<False, AliveResult>>::Out;
+}
+
+fn alive_at<A, B>() -> i32 where A: AliveAt<B>,
+                                 <A as AliveAt<B>>::Out: Number {
+    <<A as AliveAt<B>>::Out as Number>::repr()
+}
+
+fn top<Array, Index, Result>() -> i32 where Array: Top<Index, Out=Result>, Result: Number {
+    Result::repr()
+}
+
+fn top_l<Array, Index, Result>() -> i32 where Array: TopL<Index, Out=Result>, Result: Number {
+    Result::repr()
+}
+
+fn top_r<Array, Index, Result>() -> i32 where Array: TopR<Index, Out=Result>, Result: Number {
+    Result::repr()
+}
+
+fn bot<Array, Index, Result>() -> i32 where Array: Bot<Index, Out=Result>, Result: Number {
+    Result::repr()
+}
+
+fn bot_l<Array, Index, Result>() -> i32 where Array: BotL<Index, Out=Result>, Result: Number {
+    Result::repr()
+}
+
+fn bot_r<Array, Index, Result>() -> i32 where Array: BotR<Index, Out=Result>, Result: Number {
+    Result::repr()
+}
+
+fn left<Array, Index, Result>() -> i32 where Array: Left<Index, Out=Result>, Result: Number {
+    Result::repr()
+}
+
+fn right<Array, Index, Result>() -> i32 where Array: Right<Index, Out=Result>, Result: Number {
+    Result::repr()
+}
+
+fn fate<Cell, Neighbours: Number, Result>() -> i32 where Cell: Fate<Neighbours, Out=Result>, Result: Number
+{
+    Result::repr()
+}
+
+fn evolve <Array, Result>() -> String where Array: Evolve<Zero, Array, Out=Result>,
+                                                    Result: Pretty<I1> {
+    Result::repr()
+}
+
+fn evolve_for<Array, N>() -> String where N: EvolveFor<Array, N> {
+    <N as EvolveFor<Array, N>>::repr()
+}
+
+//Game of Life Array 11x11
+type BLINKER = FiveEmptyRows<Empty4<Alive3<Empty4<FiveEmptyRows<HNil>>>>>;
+type BLOCK =  FourEmptyRows<Empty4<Alive2<Empty4<HCons<Dead, Empty4<Alive2<Empty4<HCons<Dead, FourEmptyRows<EmptyRow<HNil>>>>>>>>>>>;
+type ARRAY = HCons<Alive, Empty10<HCons<Alive, Empty10<HCons<Alive, HCons<Alive, Empty10<Empty10<HCons<Alive, HCons<Alive, HCons<Alive, Empty10<HCons<Alive,HCons<Dead, Empty5<HCons<Alive, Empty10<HCons<Alive, Empty10<HCons<Alive, Empty10<HCons<Alive, HCons<Alive, HCons<Dead, Empty10<Empty5<HCons<Alive, Empty5<HNil>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
 
 fn main() {
-    check_tree::<BNode<BNode<Leaf, Leaf>, BNode<RNode<Leaf, Leaf>, Leaf>>>();
-    //add::<P10<Zero>, P5<Zero>>();
-    //mul::<I4, P10<Zero>, _>();
-    //pow::<I2, I5, _>();
-    //conditional_mul::<False, I2, P50<I5>, _ >()
-    //conditional_generic::<False, <I5 as Add<I2>>::Out, <I3 as Add<P50<I2>>>::Out, _>()
-    //equal::<P10<Zero>, P10<Zero>, _>()
-    //max::<P10<Zero>, P50<Succ<Zero>>, _>();
+    println!("\n\nGeneration 1:");
+    println!("{}", <BLINKER as Pretty<I1>>::repr());
+    println!("\n\n");
+    println!("{}", evolve_for::<BLINKER, I2>());
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn arithmetic_works() {
+        assert_eq!(incr::<I3, _>(), 4);
+        assert_eq!(decr::<Zero, _>(), 0);
+        assert_eq!(decr::<I5, _>(), 4);
+        assert_eq!(add::<P10<Zero>, P5<Zero>, _>(), 15);
+        assert_eq!(sub::<P10<Zero>, P5<Zero>, _>(), 5);
+        assert_eq!(sub::<P10<Zero>, P10<I1>, _>(), 0);
+        assert_eq!(mul::<I4, P10<Zero>, _>(), 40);
+        assert_eq!(div::<P10<Zero>, I5, _>(), 2);
+        assert_eq!(div::<P50<Zero>, I5, _>(), 10);
+        assert_eq!(div::<I3, I4, _>(), 0);
+        assert_eq!(remainder::<I3, I4, _>(), 3);
+        assert_eq!(remainder::<P10<I1>, P5<I2>, _>(), 4);
+        assert_eq!(pow::<I2, I5, _>(), 32);
+        assert_eq!(max::<P10<Zero>, P50<Succ<Zero>>, _>(), 51);
+        assert_eq!(max::<Zero, Zero, _>(), 0);
+        assert_eq!(max::<I1, Zero, _>(), 1);
+        assert_eq!(equal::<Zero, Zero, _>(), 1);
+        assert_eq!(equal::<Zero, I1, _>(), 0);
+        assert_eq!(equal::<I1, Zero, _>(), 0);
+        assert_eq!(equal::<I4, I3, _>(), 0);
+        assert_eq!(equal::<I4, I2, _>(), 0);
+        assert_eq!(less::<Zero, Zero, _>(), 0);
+        assert_eq!(less::<Zero, I1, _>(), 1);
+        assert_eq!(less::<I3, P10<Zero>, _>(), 1);
+        assert_eq!(less::<P10<Zero>, I3 , _>(), 0);
+        assert_eq!(larger_equal::<Zero, Zero, _>(), 1);
+        assert_eq!(larger_equal::<Zero, I1, _>(), 0);
+        assert_eq!(larger_equal::<I3, P10<Zero>, _>(), 0);
+        assert_eq!(larger_equal::<P10<Zero>, I3 , _>(), 1);
+
+        assert_eq!(conditional_generic::<False, <I5 as Add<I2>>::Out, <I3 as Add<P50<I2>>>::Out, _>(), 55);
+        assert_eq!(conditional_generic::<True, <I5 as Add<I2>>::Out, <I3 as Add<P50<I2>>>::Out, _>(), 7);
+    }
+
+    #[test]
+    fn game_of_life_works() {
+        assert_eq!(alive_at::<ARRAY, P10<I2>>(), 0);
+        assert_eq!(alive_at::<ARRAY, P50<P10<I4>>>(), 1);
+        //assert_eq!(alive_at::<ARRAY, I2>(), 0);
+
+        //left
+        assert_eq!(left::<ARRAY, Zero, _>(), 0);
+        assert_eq!(left::<ARRAY, I1, _>(), 1);
+        assert_eq!(left::<ARRAY, I2, _>(), 0);
+        assert_eq!(left::<ARRAY, P50<P10<P10<P10<P10<P5<I4>>>>>>, _>(), 0);
+        assert_eq!(left::<ARRAY, P50<P10<P10<P10<P10<P5<I3>>>>>>, _>(), 1);
+        assert_eq!(left::<ARRAY, P10<P10<I4>>, _>(), 1);
+        assert_eq!(left::<ARRAY, P10<P10<P10<P10<I7>>>>, _>(), 1);
+        //top
+        assert_eq!(top::<ARRAY, P10<Zero>, _>(), 0);
+        assert_eq!(top::<ARRAY, Zero, _>(), 0);
+        assert_eq!(top::<ARRAY, P10<P10<P10<I3>>>, _>(), 1);
+        assert_eq!(top::<ARRAY, P50<I5>, _>(), 1);
+        assert_eq!(top::<ARRAY, P50<I8>, _>(), 0);
+        assert_eq!(top::<ARRAY, P50<P50<P10<P10<Zero>>>>, _>(), 0);
+        assert_eq!(top::<ARRAY, P50<P50<I9>>, _>(), 1);
+
+        //bot
+        assert_eq!(bot::<ARRAY, I110, _>(), 0);
+        assert_eq!(bot::<ARRAY, P50<P50<I4>>, _>(), 1);
+        assert_eq!(bot::<ARRAY, P50<P50<I5>>, _>(), 0);
+        assert_eq!(bot::<ARRAY, Zero, _>(), 1);
+        assert_eq!(bot::<ARRAY, P10<Zero>, _>(), 0);
+        assert_eq!(bot::<ARRAY, P10<I1>, _>(), 1);
+        assert_eq!(bot::<ARRAY, P10<I2>, _>(), 1);
+
+        //right
+        assert_eq!(right::<ARRAY, Zero, _>(), 0);
+        assert_eq!(right::<ARRAY, I10, _>(), 0);
+        assert_eq!(right::<ARRAY, P10<P10<I2>>, _>(), 1);
+        assert_eq!(right::<ARRAY, P10<P10<P10<P10<I5>>>>, _>(), 1);
+        assert_eq!(right::<ARRAY, P50<I6>, _>(), 1);
+        assert_eq!(right::<ARRAY, P50<I7>, _>(), 0);
+        assert_eq!(right::<ARRAY, P10<I110>, _>(), 0);
+
+        //top_l
+        assert_eq!(top_l::<ARRAY, Zero, _>(), 0);
+        assert_eq!(top_l::<ARRAY, P10<I2>, _>(), 1);
+        assert_eq!(top_l::<ARRAY, P10<P10<I2>>, _>(), 0);
+        assert_eq!(top_l::<ARRAY, P50<P10<P10<P10<P10<P5<I3>>>>>>, _>(), 1);
+        assert_eq!(top_l::<ARRAY, P50<P10<P10<P10<P10<P5<I4>>>>>>, _>(), 0);
+        assert_eq!(top_l::<ARRAY, P10<I110>, _>(), 0);
+        assert_eq!(top_l::<ARRAY, P50<P10<I9>>, _>(), 1);
+        assert_eq!(top_l::<ARRAY, P50<P10<P10<Zero>>>, _>(), 0);
+
+        //top_r
+        assert_eq!(top_r::<ARRAY, Zero, _>(), 0);
+        assert_eq!(top_r::<ARRAY, P10<P10<P10<I3>>>, _>(), 1);
+        assert_eq!(top_r::<ARRAY, P10<P10<P10<I3>>>, _>(), 1);
+        assert_eq!(top_r::<ARRAY, P50<P10<I7>>, _>(), 1);
+        assert_eq!(top_r::<ARRAY, P50<P10<P10<I4>>>, _>(), 1);
+        assert_eq!(top_r::<ARRAY, P10<I110>, _>(), 0);
+
+        //bot_l
+        assert_eq!(bot_l::<ARRAY, Zero, _>(), 0);
+        assert_eq!(bot_l::<ARRAY, I1, _>(), 1);
+
+        //bot_r
+        assert_eq!(bot_r::<ARRAY, Zero, _>(), 0);
+        assert_eq!(bot_r::<ARRAY, I11, _>(), 1);
+        assert_eq!(bot_r::<ARRAY, P10<I110>, _>(), 0);
+        assert_eq!(bot_r::<ARRAY, P50<P10<P10<P10<I6>>>>, _>(), 1);
+
+        assert_eq!(fate::<Alive, Zero, _>(), 0);
+        assert_eq!(fate::<Alive, I1, _>(), 0);
+        assert_eq!(fate::<Alive, I2, _>(), 1);
+        assert_eq!(fate::<Alive, I3, _>(), 1);
+        assert_eq!(fate::<Alive, I4, _>(), 0);
+        assert_eq!(fate::<Alive, I7, _>(), 0);
+        assert_eq!(fate::<Alive, I8, _>(), 0);
+    }
+}
+
+
