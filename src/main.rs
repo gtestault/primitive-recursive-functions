@@ -31,6 +31,8 @@ struct Dead{}
 type False = Zero;
 type True = Succ<Zero>;
 
+
+//arithmetic type constructor inspired by: [tylar](https://github.com/Boddlnagg/tylar)
 //Nat Number types
 struct Zero{}
 struct Succ<A> {
