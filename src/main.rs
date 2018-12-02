@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-#![recursion_limit="500"]
+#![recursion_limit="100000"]
 use std::marker::PhantomData;
 
 struct Zero{}
@@ -12,6 +12,18 @@ trait Number {
 }
 
 impl Number for Zero {
+    fn repr() -> i32 {
+        0
+    }
+}
+
+impl Number for Alive {
+    fn repr() -> i32 {
+        1
+    }
+}
+
+impl Number for Dead {
     fn repr() -> i32 {
         0
     }
@@ -243,8 +255,8 @@ trait Equal<B> {
 }
 
 //Recursion start
-impl<A, B> Equal<Succ<B>> for Succ<A> where A: Larger<B> {
-    type Out = <A as Larger<B>>::Out;
+impl<A, B> Equal<Succ<B>> for Succ<A> where A: Equal<B> {
+    type Out = <A as Equal<B>>::Out;
 }
 
 //Recursion end: Type Self < B (trait parameter) are Equal
@@ -403,6 +415,11 @@ fn check_tree<A>() where A: Node {
 
 }
 
+//    tree well formed: compiles
+//    check_tree::<BNode<i32, BNode<i32, Leaf, Leaf>, BNode<i32, RNode<i32, Leaf, Leaf>, Leaf>>>();
+//    tree not well formed: doesn't compile
+//    check_tree::<BNode<i32, BNode<i32, Leaf, Leaf>, BNode<i32, BNode<i32, Leaf, Leaf>, Leaf>>>();
+
 // Red Black Tree Type Checking END -------------------------------------------
 
 struct HCons<Head, Tail> {
@@ -415,9 +432,14 @@ struct HNil{}
 struct Alive{}
 struct Dead{}
 
-type EMPTY5<A> = HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, A>>>>>;
-type EMPTY10<A> = EMPTY5<EMPTY5<A>>;
-type ARRAY = HCons<Alive, EMPTY10<HCons<Alive, EMPTY10<HCons<Alive, HCons<Alive, EMPTY10<EMPTY10<HCons<Alive, HCons<Alive, HCons<Alive, EMPTY10<HCons<Alive,HCons<Dead, EMPTY5<HCons<Alive, EMPTY10<HCons<Alive, EMPTY10<HCons<Alive,EMPTY10<HCons<Alive, HCons<Alive, HCons<Dead,EMPTY10<EMPTY5<HCons<Alive, EMPTY5<HNil>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
+type Empty5<A> = HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, A>>>>>;
+type Empty10<A> = Empty5<Empty5<A>>;
+type EmptyRow<A> = Empty10<HCons<Dead, A>>;
+type Empty4<A> = HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, A>>>>;
+type FourEmptyRows<A> = EmptyRow<EmptyRow<EmptyRow<EmptyRow<A>>>>;
+type FiveEmptyRows<A> = EmptyRow<EmptyRow<EmptyRow<EmptyRow<EmptyRow<A>>>>>;
+type Alive2<A> = HCons<Alive, HCons<Alive, A>>;
+type Alive3<A> = HCons<Alive, HCons<Alive, HCons<Alive, A>>>;
 type I10 = P10<Zero>;
 type I11 = P10<Succ<Zero>>;
 type I110 = P50<P50<P10<Zero>>>;
@@ -474,17 +496,82 @@ impl<A, Index> Pretty<Index> for HCons<Alive, A> where A: Pretty<Succ<Index>>, I
     }
 }
 
-trait Evolve {
+trait Evolve<Index, Array> {
     type Out;
 }
 
-//impl Evolve for HCons<A, HNil> {
-//    type Out = HCons<, HNil>;
-//}
-//
-//impl<A, B> Evolve for HCons<A, B> {
-//    type Out = HCons<, B>;
-//}
+impl<Head, Tail, Index, Array, TopResult, TopLeft, TopRight, LeftResult, RightResult, BotResult, BotLeft, BotRight, TotalAlive, CellFate> Evolve<Index, Array> for HCons<Head, Tail> where Array: Top<Index, Out=TopResult>,
+                                                                                                                                                                                           Array: TopL<Index, Out=TopLeft>,
+                                                                                                                                                                                           Array: TopR<Index, Out=TopRight>,
+                                                                                                                                                                                           Array: Left<Index, Out=LeftResult>,
+                                                                                                                                                                                           Array: Right<Index, Out=RightResult>,
+                                                                                                                                                                                           Array: Bot<Index, Out=BotResult>,
+                                                                                                                                                                                           Array: BotL<Index, Out=BotLeft>,
+                                                                                                                                                                                           Array: BotR<Index, Out=BotRight>,
+                                                                                                                                                                                           TopResult: Add8<TopLeft, TopRight, LeftResult, RightResult, BotResult, BotLeft, BotRight, Out=TotalAlive>,
+                                                                                                                                                                                           Head: Fate<TotalAlive, Out=CellFate>,
+                                                                                                                                                                                           //Compiler required bounds
+                                                                                                                                                                                           Tail: Evolve<Succ<Index>, Array>,
+                                                                                                                                                                                           TopResult: Number, TotalAlive: Number,
+{
+    type Out = HCons<CellFate, <Tail as Evolve<Succ<Index>, Array>>::Out>;
+}
+
+impl<Index, Array> Evolve<Index, Array> for HNil
+{
+    type Out = HNil;
+}
+
+trait EvolveFor<Array, N> {
+    fn repr() -> String;
+}
+
+impl<A, NextGen, B, N, GenerationNumber> EvolveFor<A, N> for Succ<B> where A: Evolve<Zero, A, Out=NextGen>,
+                                                   NextGen: Pretty<I1>, B: EvolveFor<NextGen, N> + Number + Sub<N, Out=GenerationNumber>,
+                                                   GenerationNumber: Number + Incr {
+    fn repr() -> String {
+        format!("Generation {}:\n{}\n\n{}", <<GenerationNumber as Incr>::Out as Number>::repr(), NextGen::repr(), <B as EvolveFor<NextGen, N>>::repr())
+    }
+}
+
+impl<Array, N> EvolveFor<Array, N> for Zero {
+    fn repr() -> String {
+        format!("")
+    }
+}
+
+trait Add8<B, C, D, E, F, G, H> {
+    type Out: Number;
+}
+
+impl<A, B, C, D, E, F, G, H, Add1Result, Add2Result, Add3Result, Add4Result, Add5Result, Add6Result, Add7Result> Add8<B, C, D, E, F, G, H> for A where A: Add<B, Out=Add1Result>,
+                                                                                                                                                       Add1Result: Add<C, Out=Add2Result> + Number,
+                                                                                                                                                       Add2Result: Add<D, Out=Add3Result> + Number,
+                                                                                                                                                       Add3Result: Add<E, Out=Add4Result> + Number,
+                                                                                                                                                       Add4Result: Add<F, Out=Add5Result> + Number,
+                                                                                                                                                       Add5Result: Add<G, Out=Add6Result> + Number,
+                                                                                                                                                       Add6Result: Add<H, Out=Add7Result> + Number,
+                                                                                                                                                       Add7Result: Number
+{
+    type Out = Add7Result;
+}
+
+trait Fate<Neighbours: Number> {
+    type Out;
+}
+
+//Any dead cell with exactly three live neighbors becomes a live cell, as if by reproduction.
+impl<Neighbours, BirthResult> Fate<Neighbours> for Dead where Neighbours: Equal<I3, Out=BirthResult> + Number,
+                                                              BirthResult: If<Alive, Dead> + Number {
+    type Out = <BirthResult as If<Alive, Dead>>::Out;
+}
+
+impl<Neighbours, Equal1Result, Equal2Result , Result> Fate<Neighbours> for Alive where Neighbours: Equal<I3, Out=Equal1Result> + Equal<I2, Out=Equal2Result> + Number,
+                                                                                       Equal1Result: Or<Equal2Result, Out=Result> + Number,
+                                                                                       Equal2Result: Number,
+                                                                                       Result:  If<Alive, Dead> + Number {
+    type Out = <Result as If<Alive, Dead>>::Out;
+}
 
 trait AliveAt<A> {
     type Out;
@@ -677,12 +764,30 @@ fn right<Array, Index, Result>() -> i32 where Array: Right<Index, Out=Result>, R
     Result::repr()
 }
 
+fn fate<Cell, Neighbours: Number, Result>() -> i32 where Cell: Fate<Neighbours, Out=Result>, Result: Number
+{
+    Result::repr()
+}
+
+fn evolve <Array, Result>() -> String where Array: Evolve<Zero, Array, Out=Result>,
+                                                    Result: Pretty<I1> {
+    Result::repr()
+}
+
+fn evolve_for<Array, N>() -> String where N: EvolveFor<Array, N> {
+    <N as EvolveFor<Array, N>>::repr()
+}
+
+//Game of Life Array 11x11
+type BLINKER = FiveEmptyRows<Empty4<Alive3<Empty4<FiveEmptyRows<HNil>>>>>;
+type BLOCK =  FourEmptyRows<Empty4<Alive2<Empty4<HCons<Dead, Empty4<Alive2<Empty4<HCons<Dead, FourEmptyRows<EmptyRow<HNil>>>>>>>>>>>;
+type ARRAY = HCons<Alive, Empty10<HCons<Alive, Empty10<HCons<Alive, HCons<Alive, Empty10<Empty10<HCons<Alive, HCons<Alive, HCons<Alive, Empty10<HCons<Alive,HCons<Dead, Empty5<HCons<Alive, Empty10<HCons<Alive, Empty10<HCons<Alive, Empty10<HCons<Alive, HCons<Alive, HCons<Dead, Empty10<Empty5<HCons<Alive, Empty5<HNil>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
+
 fn main() {
-    //tree well formed: compiles
-    //check_tree::<BNode<i32, BNode<i32, Leaf, Leaf>, BNode<i32, RNode<i32, Leaf, Leaf>, Leaf>>>();
-    //tree not well formed: doesn't compile
-    //check_tree::<BNode<i32, BNode<i32, Leaf, Leaf>, BNode<i32, BNode<i32, Leaf, Leaf>, Leaf>>>();
-    println!("{}", <ARRAY as Pretty<I1>>::repr());
+    println!("\n\nGeneration 1:");
+    println!("{}", <BLINKER as Pretty<I1>>::repr());
+    println!("\n\n");
+    println!("{}", evolve_for::<BLINKER, I2>());
 }
 
 #[cfg(test)]
@@ -709,6 +814,8 @@ mod tests {
         assert_eq!(equal::<Zero, Zero, _>(), 1);
         assert_eq!(equal::<Zero, I1, _>(), 0);
         assert_eq!(equal::<I1, Zero, _>(), 0);
+        assert_eq!(equal::<I4, I3, _>(), 0);
+        assert_eq!(equal::<I4, I2, _>(), 0);
         assert_eq!(less::<Zero, Zero, _>(), 0);
         assert_eq!(less::<Zero, I1, _>(), 1);
         assert_eq!(less::<I3, P10<Zero>, _>(), 1);
@@ -721,8 +828,6 @@ mod tests {
         assert_eq!(conditional_generic::<False, <I5 as Add<I2>>::Out, <I3 as Add<P50<I2>>>::Out, _>(), 55);
         assert_eq!(conditional_generic::<True, <I5 as Add<I2>>::Out, <I3 as Add<P50<I2>>>::Out, _>(), 7);
     }
-
-    type TestArray = HCons<Alive, EMPTY10<HCons<Alive, EMPTY10<HCons<Alive, HCons<Alive, EMPTY10<EMPTY10<HNil>>>>>>>>;
 
     #[test]
     fn game_of_life_works() {
@@ -792,6 +897,14 @@ mod tests {
         assert_eq!(bot_r::<ARRAY, I11, _>(), 1);
         assert_eq!(bot_r::<ARRAY, P10<I110>, _>(), 0);
         assert_eq!(bot_r::<ARRAY, P50<P10<P10<P10<I6>>>>, _>(), 1);
+
+        assert_eq!(fate::<Alive, Zero, _>(), 0);
+        assert_eq!(fate::<Alive, I1, _>(), 0);
+        assert_eq!(fate::<Alive, I2, _>(), 1);
+        assert_eq!(fate::<Alive, I3, _>(), 1);
+        assert_eq!(fate::<Alive, I4, _>(), 0);
+        assert_eq!(fate::<Alive, I7, _>(), 0);
+        assert_eq!(fate::<Alive, I8, _>(), 0);
     }
 }
 
