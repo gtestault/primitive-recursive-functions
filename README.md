@@ -48,3 +48,5 @@ Output for BLINKER type:
    - - - - - - - - - - - 
    - - - - - - - - - - - 
 ```
+
+compile time for 15 generations on intel-i5 4460: ```10m 01s```
