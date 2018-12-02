@@ -492,10 +492,10 @@ trait Left<Index> {
     type Out;
 }
 
-impl<Index, Head, Tail, RemainResult, EqualResult, SubResult, AliveResult> Left<Index> for HCons<Head, Tail> where Index: Remainder<RowSize, Out=RemainResult>,
-                                                                                                      RemainResult: Equal<I1, Out=EqualResult> + Number,
+impl<Index, Head, Tail, RemainResult, EqualResult, SubResult, AliveResult> Left<Index> for HCons<Head, Tail> where Index: Remainder<Succ<RowSize>, Out=RemainResult>,
+                                                                                                      RemainResult: Equal<Zero, Out=EqualResult> + Number,
                                                                                                       I1: Sub<Index, Out=SubResult>, HCons<Head,Tail>: AliveAt<SubResult, Out=AliveResult>,
-                                                                                                    //Compiler required where Clauses
+                                                                                                      //Compiler required where Clauses
                                                                                                       SubResult: Number, EqualResult: Number + If<Zero, AliveResult>
 {
     type Out = <EqualResult as If<False, AliveResult>>::Out;
@@ -566,9 +566,10 @@ mod tests {
 
     #[test]
     fn game_of_life_works() {
-        assert_eq!(alive_at::<TestArray, Zero>(), 1);
-        assert_eq!(alive_at::<TestArray, I1>(), 0);
-        assert_eq!(left::<ARRAY, I0>(), 0);
+        assert_eq!(alive_at::<ARRAY, P10<I2>>(), 0);
+        //assert_eq!(alive_at::<ARRAY, I2>(), 0);
+        assert_eq!(left::<ARRAY, I1, _>(), 1);
+        assert_eq!(left::<ARRAY, I2, _>(), 0);
     }
 }
 
