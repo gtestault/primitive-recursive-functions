@@ -38,14 +38,14 @@ impl<A> Incr for Succ<A> where A: Number {
 }
 
 trait Decr {
-    type Out: Number;
+    type Out: Number + Decr;
 }
 
 impl Decr for Zero {
     type Out = Zero;
 }
 
-impl<A> Decr for Succ<A> where A: Number {
+impl<A> Decr for Succ<A> where A: Number + Decr {
     type Out = A;
 }
 
@@ -112,6 +112,7 @@ trait Remainder<RHS> {
     type Out: Number;
 }
 
+// (a mod b) = a - (a/b)*b where (a/b) is integer division.
 impl<RHS, A> Remainder<RHS> for Succ<A> where Succ<A>: Larger<RHS>,
                                               RHS: Sub<Succ<A>>,
                                               <RHS as Sub<Succ<A>>>::Out: Div<RHS>,
@@ -120,6 +121,10 @@ impl<RHS, A> Remainder<RHS> for Succ<A> where Succ<A>: Larger<RHS>,
                                               <<Succ<A> as Larger<RHS>>::Out as If<Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>, <<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>>::Out: Mul<RHS>,
                                               <<<Succ<A> as Larger<RHS>>::Out as If<Succ<<<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>, <<RHS as Sub<Succ<A>>>::Out as Div<RHS>>::Out>>::Out as Mul<RHS>>::Out: Sub<Succ<A>> {
     type Out = <<<Succ<A> as Div<RHS>>::Out as Mul<RHS>>::Out as Sub<Succ<A>>>::Out;
+}
+
+impl<RHS> Remainder<RHS> for Zero {
+    type Out = Zero;
 }
 
 trait Pow<A> {
@@ -150,16 +155,16 @@ impl<A, B> If<A, B> for Succ<Zero> {
 
 
 //Check if type Self and A are equal: if they are return Succ<Zero>, if not unification fails -> compiler error
-trait Equal<A> {
+trait EqualFailing<A> {
     type Out;
 }
 
-impl Equal<Zero> for Zero {
+impl EqualFailing<Zero> for Zero {
     type Out = Succ<Zero>;
 }
 
-impl<A, B> Equal<Succ<B>> for Succ<A> where B: Equal<A> {
-    type Out = <B as Equal<A>>::Out;
+impl<A, B> EqualFailing<Succ<B>> for Succ<A> where B: EqualFailing<A> {
+    type Out = <B as EqualFailing<A>>::Out;
 }
 
 trait Max<B> {
@@ -210,13 +215,60 @@ impl Larger<Zero> for Zero {
     type Out = True;
 }
 
+trait Less<A> {
+    type Out: Number;
+}
+
+//Recursion start
+impl<A, B> Less<Succ<B>> for Succ<A> where A: Larger<B> {
+    type Out = <A as Larger<B>>::Out;
+}
+
+//Recursion end: Type Self < B (trait parameter) are Equal
+impl<A> Less<Succ<A>> for Zero where A: Number {
+    type Out = True;
+}
+//Recursion end: Type Self > B (trait parameter) are Equal
+impl<A> Less<Zero> for Succ<A> where A: Number {
+    type Out = False;
+}
+
+//Recursion end: Type Self and B are Equal
+impl Less<Zero> for Zero {
+    type Out = False;
+}
+
+
+trait Equal<B> {
+    type Out: Number;
+}
+
+//Recursion start
+impl<A, B> Equal<Succ<B>> for Succ<A> where A: Larger<B> {
+    type Out = <A as Larger<B>>::Out;
+}
+
+//Recursion end: Type Self < B (trait parameter) are Equal
+impl<A> Equal<Succ<A>> for Zero where A: Number {
+    type Out = False;
+}
+//Recursion end: Type Self > B (trait parameter) are Equal
+impl<A> Equal<Zero> for Succ<A> where A: Number {
+    type Out = False;
+}
+
+//Recursion end: Type Self and B are Equal
+impl Equal<Zero> for Zero {
+    type Out = True;
+}
+
 // When calling the function the last generic Type (B) must be set to '_' in order for the compiler to infer the result type of the operation.
 // If we set the B generic type and it is not the result type of the operation, the rust unification process will fail and the type checker will error out.
 fn incr<A, B>() -> i32 where A: Incr<Out=B>, B: Number {
     B::repr()
 }
 
-fn decr<A, B>() -> i32 where A: Decr<Out=B>, B: Number {
+fn decr<A, B>() -> i32 where A: Decr<Out=B>, B: Number + Decr {
     B::repr()
 }
 
@@ -252,10 +304,13 @@ fn conditional_generic<A, B, C, Result>() -> i32 where A: If<B, C, Out=Result>, 
     Result::repr()
 }
 
-fn equal<A, B, C>() where A: Equal<B, Out=C>, C: Number {
+fn equal_failing<A, B, C>() where A: EqualFailing<B, Out=C>, C: Number {
     println!("{}", C::repr());
 }
 
+fn equal<A, B, Result>() -> i32 where A: Equal<B, Out=Result>, Result: Number {
+    Result::repr()
+}
 fn max<A, B, C>() -> i32 where A: Max<B, Out=C>, C: Number {
     C::repr()
 }
@@ -268,6 +323,7 @@ type I2 = Succ<Succ<Zero>>;
 type I3 = Succ<Succ<Succ<Zero>>>;
 type I4 = Succ<Succ<Succ<Succ<Zero>>>>;
 type I5 = Succ<Succ<Succ<Succ<Succ<Zero>>>>>;
+type I9 = P5<I4>;
 type P5<N> = Succ<Succ<Succ<Succ<Succ<N>>>>>;
 type P10<N> = P5<P5<N>>;
 type P50<N> = P10<P10<P10<P10<P10<N>>>>>;
@@ -288,8 +344,8 @@ struct Leaf {
 }
 
 trait Node where {}
-impl<V, L, R> Node for BNode<V, L, R>  where L: Height, L::Out: Equal<<R as Height>::Out>, R: Height {}
-impl<V, L, R> Node for RNode<V, L, R>  where L: Black + Height, L::Out: Equal<<R as Height>::Out>,  R: Black + Height {}
+impl<V, L, R> Node for BNode<V, L, R>  where L: Height, L::Out: EqualFailing<<R as Height>::Out>, R: Height {}
+impl<V, L, R> Node for RNode<V, L, R>  where L: Black + Height, L::Out: EqualFailing<<R as Height>::Out>,  R: Black + Height {}
 
 trait Black{}
 trait Red{}
@@ -330,9 +386,33 @@ struct Dead{}
 
 type EMPTY5<A> = HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, HCons<Dead, A>>>>>;
 type EMPTY10<A> = EMPTY5<EMPTY5<A>>;
-type ARRAY = HCons<Alive, HNil>;
-type I11 = P10<P10<Succ<Zero>>>;
+type ARRAY = HCons<Alive, EMPTY10<HCons<Alive, EMPTY10<HCons<Alive, HCons<Alive, EMPTY10<EMPTY10<HCons<Alive, HCons<Alive, HCons<Alive, EMPTY10<HCons<Alive,HCons<Dead, EMPTY5<HCons<Alive, EMPTY10<HCons<Alive, EMPTY10<HCons<Alive,EMPTY10<HCons<Alive, HCons<Alive, HCons<Dead,EMPTY10<EMPTY5<HCons<Alive, EMPTY5<HNil>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
+type I11 = P10<Succ<Zero>>;
+type RowSize = I11;
+type ColSize = RowSize;
+type TopPosition = P10<I1>;
 
+trait LineBreak {
+    fn repr() -> String;
+}
+
+impl LineBreak for True {
+    fn repr() -> String {
+        String::from("\n")
+    }
+}
+
+impl LineBreak for False {
+    fn repr() -> String {
+        String::from("")
+    }
+}
+
+fn line_break<Index>() -> String where <<Index as Remainder<I11>>::Out as Equal<Zero>>::Out: LineBreak, Index: Remainder<I11>,
+                                          <Index as Remainder<I11>>::Out: Equal<Zero>
+   {
+    <<<Index as Remainder<I11>>::Out as Equal<Zero>>::Out as LineBreak>::repr()
+}
 
 trait Pretty<Index> where Index: Number {
     fn repr() -> String;
@@ -344,16 +424,106 @@ impl<Index> Pretty<Index> for HNil where Index: Number {
     }
 }
 
-impl<A, Index> Pretty<Index> for HCons<Dead, A> where A: Pretty<Index>, Index: Number {
+impl<A, Index> Pretty<Index> for HCons<Dead, A> where A: Pretty<Succ<Index>>, Index: Number + Remainder<I11>,
+                                                      <Index as Remainder<I11>>::Out: Equal<Zero>,
+                                                      <<Index as Remainder<I11>>::Out as Equal<Zero>>::Out: LineBreak
+{
     fn repr() -> String {
-        format!("- {}", A::repr())
+        format!("- {}{}", line_break::<Index>(), <A as Pretty<Succ<Index>>>::repr())
     }
 }
 
-impl<A, Index> Pretty<Index> for HCons<Alive, A> where A: Pretty<Index>, Index: Number {
+impl<A, Index> Pretty<Index> for HCons<Alive, A> where A: Pretty<Succ<Index>>, Index: Number + Remainder<I11>,
+                                                       <Index as Remainder<I11>>::Out: Equal<Zero>,
+                                                       <<Index as Remainder<I11>>::Out as Equal<Zero>>::Out: LineBreak  {
     fn repr() -> String {
-        format!("+ {}", A::repr())
+        format!("X {}{}", line_break::<Index>(), <A as Pretty<Succ<Index>>>::repr())
     }
+}
+
+trait Evolve {
+    type Out;
+}
+
+//impl Evolve for HCons<A, HNil> {
+//    type Out = HCons<, HNil>;
+//}
+//
+//impl<A, B> Evolve for HCons<A, B> {
+//    type Out = HCons<, B>;
+//}
+
+trait AliveAt<A> {
+    type Out;
+}
+
+impl<Head, Tail, A> AliveAt<Succ<A>> for HCons<Head, Tail> where Tail: AliveAt<A> {
+    type Out = <Tail as AliveAt<A>>::Out;
+}
+
+impl<Tail> AliveAt<Zero> for HCons<Alive, Tail> {
+    type Out = True;
+}
+
+impl<Tail> AliveAt<Zero> for HCons<Dead, Tail> {
+    type Out = False;
+}
+
+trait Top<Index> {
+    type Out;
+}
+
+trait TopL {
+    type Out;
+}
+
+impl<Index, Head, Tail> Top<Index> for HCons<Head, Tail> where Index: Less<RowSize> + Decr,
+                                                               HCons<Head, Tail>: AliveAt<<<<<<<<<<<<Index as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out>,
+                                                               <Index as Less<Succ<Succ<Succ<Succ<Succ<Succ<Succ<Succ<Succ<Succ<Succ<Zero>>>>>>>>>>>>>::Out: If<Zero, <HCons<Head, Tail> as AliveAt<<<<<<<<<<<<Index as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out as Decr>::Out>>::Out>
+{
+    type Out = <<Index as Less<RowSize>>::Out as If<False, <HCons<Head, Tail> as AliveAt<<TopPosition as Sub<Index>>::Out>>::Out>>::Out;
+}
+
+trait TopR {
+    type Out;
+}
+
+trait Left<Index> {
+    type Out;
+}
+
+impl<Index, Head, Tail, RemainResult, EqualResult, SubResult, AliveResult> Left<Index> for HCons<Head, Tail> where Index: Remainder<RowSize, Out=RemainResult>,
+                                                                                                      RemainResult: Equal<I1, Out=EqualResult> + Number,
+                                                                                                      I1: Sub<Index, Out=SubResult>, HCons<Head,Tail>: AliveAt<SubResult, Out=AliveResult>,
+                                                                                                    //Compiler required where Clauses
+                                                                                                      SubResult: Number, EqualResult: Number + If<Zero, AliveResult>
+{
+    type Out = <EqualResult as If<False, AliveResult>>::Out;
+}
+
+trait Right {
+    type Out;
+}
+
+trait BotL {
+    type Out;
+}
+
+trait BotR {
+    type Out;
+}
+
+fn alive_at<A, B>() -> i32 where A: AliveAt<B>,
+                                 <A as AliveAt<B>>::Out: Number {
+    <<A as AliveAt<B>>::Out as Number>::repr()
+}
+
+fn top<A, B>() -> i32 where A: Top<B>, <A as Top<B>>::Out: Number{
+    <<A as Top<B>>::Out as Number>::repr()
+}
+
+fn left<Array, Index, Result>() -> i32 where Array: Left<Index, Out=Result>, Result: Number {
+    Result::repr()
 }
 
 fn main() {
@@ -361,7 +531,7 @@ fn main() {
     //check_tree::<BNode<i32, BNode<i32, Leaf, Leaf>, BNode<i32, RNode<i32, Leaf, Leaf>, Leaf>>>();
     //tree not well formed: doesn't compile
     //check_tree::<BNode<i32, BNode<i32, Leaf, Leaf>, BNode<i32, BNode<i32, Leaf, Leaf>, Leaf>>>();
-
+    println!("{}", <ARRAY as Pretty<I1>>::repr());
 }
 
 #[cfg(test)]
@@ -385,8 +555,20 @@ mod tests {
         assert_eq!(max::<P10<Zero>, P50<Succ<Zero>>, _>(), 51);
         assert_eq!(max::<Zero, Zero, _>(), 0);
         assert_eq!(max::<I1, Zero, _>(), 1);
+        assert_eq!(equal::<Zero, Zero, _>(), 1);
+        assert_eq!(equal::<Zero, I1, _>(), 0);
+        assert_eq!(equal::<I1, Zero, _>(), 0);
         assert_eq!(conditional_generic::<False, <I5 as Add<I2>>::Out, <I3 as Add<P50<I2>>>::Out, _>(), 55);
         assert_eq!(conditional_generic::<True, <I5 as Add<I2>>::Out, <I3 as Add<P50<I2>>>::Out, _>(), 7);
+    }
+
+    type TestArray = HCons<Alive, EMPTY10<HCons<Alive, EMPTY10<HCons<Alive, HCons<Alive, EMPTY10<EMPTY10<HNil>>>>>>>>;
+
+    #[test]
+    fn game_of_life_works() {
+        assert_eq!(alive_at::<TestArray, Zero>(), 1);
+        assert_eq!(alive_at::<TestArray, I1>(), 0);
+        assert_eq!(left::<ARRAY, I0>(), 0);
     }
 }
 
