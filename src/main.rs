@@ -42,18 +42,6 @@ impl Number for Zero {
     }
 }
 
-impl Number for Alive {
-    fn repr() -> i32 {
-        1
-    }
-}
-
-impl Number for Dead {
-    fn repr() -> i32 {
-        0
-    }
-}
-
 impl<A> Number for Succ<A>
 where
     A: Number,
