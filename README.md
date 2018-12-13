@@ -1,4 +1,4 @@
-
+[![Build Status](https://travis-ci.com/gtestault/primitive-recursive-functions.svg?branch=master)](https://travis-ci.com/gtestault/primitive-recursive-functions)
 
 [Conway's Game of Life](https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life) at type level in Rust.
 
